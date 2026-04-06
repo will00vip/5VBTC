@@ -815,7 +815,7 @@ function processSignalResult(result) {
 
 // 信号缓存，用于同步推送和UI显示
 let signalCache = null
-const SIGNAL_CACHE_DURATION = 5 * 60 * 1000 // 5分钟缓存
+const SIGNAL_CACHE_DURATION = 120 * 1000 // 120秒缓存
 
 // 更新信号缓存
 function updateSignalCache(result) {
