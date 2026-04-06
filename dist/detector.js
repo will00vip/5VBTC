@@ -402,6 +402,17 @@ async function detectSignal(interval) {
       resonanceInfo.resonance,
       bars) : 0;
   
+  // 将1-5星评分映射到60-100分（做多）或-100到-60分（做空）
+  if (signalType) {
+    if (signalType === 'long') {
+      // 做多：1-5星 → 60-100分
+      signalStrength = Math.round(60 + (signalStrength - 1) / 4 * 40);
+    } else {
+      // 做空：1-5星 → -100到-60分
+      signalStrength = Math.round(-100 + (signalStrength - 1) / 4 * 40);
+    }
+  }
+  
   var tradeLevels = signalType ? calculateTradeLevels(signalType, bars) : null;
   
   var positionAdvice = signalType && tradeLevels ? 
