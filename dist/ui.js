@@ -3912,18 +3912,19 @@ function updateSimulatorPanel() {
 
 // 交易会话状态
 let tradeSessionActive = false
-let sessionInitialBalance = 100 // 本轮初始余额
+let sessionInitialBalance = 1000 // 本轮初始余额
+let currentRound = 1 // 当前轮次
 
 // 获取保存的余额设置
 function getSavedBalance() {
   const saved = localStorage.getItem('trade_balance')
-  return saved ? parseFloat(saved) : 100
+  return saved ? parseFloat(saved) : 1000
 }
 
 // 获取保存的杠杆设置
 function getSavedLeverage() {
   const saved = localStorage.getItem('trade_leverage')
-  return saved ? parseInt(saved) : 20
+  return saved ? parseInt(saved) : 30
 }
 
 // 保存余额设置
@@ -3943,11 +3944,8 @@ function toggleTradeSession() {
   
   if (!tradeSessionActive) {
     // 开始新会话
-    const balanceInput = document.getElementById('tradeBalance')
-    const leverageInput = document.getElementById('tradeLeverage')
-    
-    const newBalance = parseFloat(balanceInput.value) || 100
-    const leverage = parseInt(leverageInput.value) || 20
+    const newBalance = 1000 // 默认1000U
+    const leverage = 30 // 默认30倍杠杆
     
     // 保存设置
     saveBalance(newBalance)
@@ -3962,6 +3960,7 @@ function toggleTradeSession() {
     }
     
     sessionInitialBalance = newBalance
+    currentRound = 1
     tradeSessionActive = true
     
     btn.classList.add('active')
@@ -4072,6 +4071,31 @@ function initTradeSettings() {
 // 更新交易系统V1界面
 function updateTradeV1UI() {
   if (!window.Simulator) return
+  
+  // 检查余额，如果亏完自动添加新一轮资金
+  if (window.Simulator.balance <= 0 && tradeSessionActive) {
+    currentRound++
+    const newBalance = 1000 // 新一轮1000U
+    window.Simulator.balance = newBalance
+    window.Simulator.equity = newBalance
+    window.Simulator.positions = []
+    window.Simulator.save()
+    sessionInitialBalance = newBalance
+    
+    // 显示自动添加资金的提示
+    const positionCard = document.getElementById('positionCard')
+    if (positionCard) {
+      positionCard.innerHTML = `
+        <div class="no-position">
+          <div class="no-position-icon">🔄</div>
+          <div class="no-position-text">第${currentRound}轮资金已自动添加</div>
+          <div class="no-position-subtext">余额已重置为1000U</div>
+        </div>
+      `
+    }
+    
+    console.log(`[Trade] 第${currentRound}轮资金已自动添加: 1000U`)
+  }
   
   // 获取统计数据
   const stats = window.Simulator.getStats()
