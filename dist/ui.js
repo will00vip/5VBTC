@@ -1105,40 +1105,51 @@ function _pushNotification(result) {
       score = Math.round(result.signalConfidence)  // 有插针信号时使用信号分数
     } else {
       // 无插针信号：用技术指标打基础分(0-50)
-      // 趋势加分
+      // 趋势加分 (0-8分)
       if (result.trend) {
         if (result.trend.includes('上涨') || result.trend.includes('多头')) score += 8
         else if (result.trend.includes('下跌') || result.trend.includes('空头')) score -= 5
       }
-      // RSI加分
+
+      // RSI加分 (0-8分) - 超卖加分，超买减分
       if (result.rsiVal !== undefined) {
         const rsi = result.rsiVal
-        if (rsi < 30) score += 8
+        if (rsi < 30) score += 8  // 严重超卖，有反弹可能
         else if (rsi < 40) score += 5
         else if (rsi < 50) score += 3
-        else if (rsi > 70) score -= 5
+        else if (rsi > 70) score -= 5  // 严重超买
         else if (rsi > 60) score -= 3
         else if (rsi > 50) score += 1
       }
-      // MACD加分
+
+      // MACD加分 (0-7分)
       if (result.macdBar !== undefined) {
         if (result.macdBar > 0) score += 7
-        else if (result.macdBar < 0) score -= 4
+        else score -= 3
       }
-      // KDJ加分
+
+      // KDJ加分 (0-7分) - 超卖加分
       if (result.jVal !== undefined) {
-        if (result.jVal < 20) score += 6
-        else if (result.jVal > 80) score -= 4
+        const j = result.jVal
+        if (j < 20) score += 7  // 严重超卖
+        else if (j < 35) score += 5
+        else if (j < 50) score += 2
+        else if (j > 80) score -= 4  // 严重超买
+        else if (j > 65) score -= 2
+        else score += 0
       }
-      // BOLL加分
+
+      // BOLL位置加分 (0-5分) - 接近下轨加分，上轨减分
       if (result.bollPercent !== undefined) {
         const boll = result.bollPercent
-        if (boll < 10) score += 6
-        else if (boll < 30) score += 4
-        else if (boll < 40) score += 2
-        else if (boll > 80) score -= 3
-        else if (boll > 70) score -= 2
+        if (boll < 10) score += 5  // 接近下轨
+        else if (boll < 30) score += 3
+        else if (boll < 40) score += 1
+        else if (boll > 80) score -= 5  // 接近上轨
+        else if (boll > 70) score -= 3
+        else if (boll > 60) score -= 1
       }
+
       // 确保分数在合理范围内
       score = Math.max(0, Math.min(50, Math.round(score)))
       // 根据趋势调整分数符号
