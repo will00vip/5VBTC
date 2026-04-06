@@ -213,9 +213,10 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   else if (lastVolume > avgVolume * 1.2) score += 2;
   else if (lastVolume > avgVolume) score += 1;
   
-  // 计算最终星级评分（1-5星）
-  var starScore = Math.round(score / maxScore * 5);
-  return Math.min(Math.max(starScore, 1), 5);
+  // 确保分数在合理范围内
+  score = Math.min(maxScore, Math.max(0, score));
+  
+  return score;
 }
 
 /** 计算入场区间和止损止盈 */
@@ -402,14 +403,14 @@ async function detectSignal(interval) {
       resonanceInfo.resonance,
       bars) : 0;
   
-  // 将1-5星评分映射到60-100分（做多）或-100到-60分（做空）
+  // 将0-35分映射到60-100分（做多）或-100到-60分（做空）
   if (signalType) {
     if (signalType === 'long') {
-      // 做多：1-5星 → 60-100分
-      signalStrength = Math.round(60 + (signalStrength - 1) / 4 * 40);
+      // 做多：0-35 → 60-100分
+      signalStrength = Math.round(60 + (signalStrength / 35) * 40);
     } else {
-      // 做空：1-5星 → -100到-60分
-      signalStrength = Math.round(-100 + (signalStrength - 1) / 4 * 40);
+      // 做空：0-35 → -100到-60分
+      signalStrength = Math.round(-100 + (signalStrength / 35) * 40);
     }
   }
   
