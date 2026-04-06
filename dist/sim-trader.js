@@ -376,73 +376,88 @@ const SimTrader = (() => {
     }
   }
 
+  // 错误处理工具函数
+  function handleError(error, context) {
+    console.error(`[${context}] 错误:`, error)
+    // 可以在这里添加错误日志上报逻辑
+    return null
+  }
+
   // ═════════════════════════════════════
   // 开仓
   // ═════════════════════════════════════
   function _openTrade(sig, bar, ctx) {
-    const { atr } = ctx
-    const slippage = bar.close * PARAMS.SLIPPAGE
+    try {
+      const { atr } = ctx
+      const slippage = bar.close * PARAMS.SLIPPAGE
 
-    // 市价开仓含滑点
-    const entryPrice = sig.direction === 'long'
-      ? bar.close + slippage    // 做多：略高于收盘价买入
-      : bar.close - slippage    // 做空：略低于收盘价卖出
+      // 市价开仓含滑点
+      const entryPrice = sig.direction === 'long'
+        ? bar.close + slippage    // 做多：略高于收盘价买入
+        : bar.close - slippage    // 做空：略低于收盘价卖出
 
-    // ATR 自适应止损
-    let slDist = atr * PARAMS.ATR_SL_MULT
-    slDist = Math.min(slDist, entryPrice * PARAMS.SL_MAX_PCT)
-    slDist = Math.max(slDist, entryPrice * PARAMS.SL_MIN_PCT)
+      // 固定百分比止损策略（5-10%）
+      const FIXED_SL_PCT = 0.05; // 固定止损百分比 5%
+      let slDist = entryPrice * FIXED_SL_PCT;
+      
+      // 确保止损距离在合理范围内
+      slDist = Math.min(slDist, entryPrice * 0.10); // 最大10%
+      slDist = Math.max(slDist, entryPrice * 0.01); // 最小1%
 
-    const sl = sig.direction === 'long' ? entryPrice - slDist : entryPrice + slDist
+      const sl = sig.direction === 'long' ? entryPrice - slDist : entryPrice + slDist
 
-    // 基于盈亏比的三档止盈
-    const tp1 = sig.direction === 'long'
-      ? entryPrice + slDist * PARAMS.TP1_RR
-      : entryPrice - slDist * PARAMS.TP1_RR
-    const tp2 = sig.direction === 'long'
-      ? entryPrice + slDist * PARAMS.TP2_RR
-      : entryPrice - slDist * PARAMS.TP2_RR
-    const tp3 = sig.direction === 'long'
-      ? entryPrice + slDist * PARAMS.TP3_RR
-      : entryPrice - slDist * PARAMS.TP3_RR
+      // 基于盈亏比的三档止盈
+      const tp1 = sig.direction === 'long'
+        ? entryPrice + slDist * PARAMS.TP1_RR
+        : entryPrice - slDist * PARAMS.TP1_RR
+      const tp2 = sig.direction === 'long'
+        ? entryPrice + slDist * PARAMS.TP2_RR
+        : entryPrice - slDist * PARAMS.TP2_RR
+      const tp3 = sig.direction === 'long'
+        ? entryPrice + slDist * PARAMS.TP3_RR
+        : entryPrice - slDist * PARAMS.TP3_RR
 
-    // 动态仓位（连续亏损降仓）
-    let riskPct = PARAMS.BASE_RISK_PCT
-    if (_consecutiveLosses >= 3) riskPct = PARAMS.BASE_RISK_PCT * 0.5
-    else if (_consecutiveLosses >= 2) riskPct = PARAMS.BASE_RISK_PCT * 0.7
+      // 动态仓位（连续亏损降仓）
+      let riskPct = PARAMS.BASE_RISK_PCT
+      if (_consecutiveLosses >= 3) riskPct = PARAMS.BASE_RISK_PCT * 0.5
+      else if (_consecutiveLosses >= 2) riskPct = PARAMS.BASE_RISK_PCT * 0.7
 
-    const riskAmount = _account.balance * riskPct
-    // positionSize = 合约张数（以USDT价值计）
-    const positionValue = riskAmount * PARAMS.LEVERAGE
-    const positionSize = positionValue / entryPrice
+      const riskAmount = _account.balance * riskPct
+      // positionSize = 合约张数（以USDT价值计）
+      const positionValue = riskAmount * PARAMS.LEVERAGE
+      const positionSize = positionValue / entryPrice
 
-    // 开仓手续费（Taker）
-    const openFee = positionValue * PARAMS.TAKER_FEE
-    _account.balance -= openFee
+      // 开仓手续费（Taker）
+      const openFee = positionValue * PARAMS.TAKER_FEE
+      _account.balance -= openFee
 
-    _account.openTrade = {
-      id: Date.now(),
-      direction: sig.direction,
-      entryPrice,
-      entryTime: bar.time,
-      entryTimeStr: _fmtTimeFull(bar.time),
-      sl,
-      currentSl: sl,          // 动态止损
-      tp1, tp2, tp3,
-      positionSize,
-      positionValue,
-      slDist,
-      remainPct: 1.0,
-      score: sig.score,
-      rsi: sig.rsi,
-      trend: sig.trend,
-      trendTag: sig.trendTag,
-      reasons: sig.reasons.join(' | '),
-      misses: sig.misses.join(' | '),
-      tp1Hit: false,
-      tp2Hit: false,
-      openFee,
-      fundingCount: 0,
+      _account.openTrade = {
+        id: Date.now(),
+        direction: sig.direction,
+        entryPrice,
+        entryTime: bar.time,
+        entryTimeStr: _fmtTimeFull(bar.time),
+        sl,
+        currentSl: sl,          // 动态止损
+        tp1, tp2, tp3,
+        positionSize,
+        positionValue,
+        slDist,
+        remainPct: 1.0,
+        score: sig.score,
+        rsi: sig.rsi,
+        trend: sig.trend,
+        trendTag: sig.trendTag,
+        reasons: sig.reasons.join(' | '),
+        misses: sig.misses.join(' | '),
+        tp1Hit: false,
+        tp2Hit: false,
+        openFee,
+        fundingCount: 0,
+      }
+    } catch (error) {
+      handleError(error, '_openTrade')
+      return null
     }
   }
 

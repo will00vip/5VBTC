@@ -4277,6 +4277,90 @@ function updateSignalIndicator() {
 // 绑定事件
 document.addEventListener('DOMContentLoaded', () => {
   // 初始化交易设置
+  // 应用状态管理
+  let appState = 'foreground'; // foreground, background
+  let tradeUpdateInterval = null;
+  let signalFetchInterval = null;
+  
+  // 错误处理工具函数
+  function handleError(error, context) {
+    console.error(`[${context}] 错误:`, error);
+    // 可以在这里添加错误日志上报逻辑
+    return null;
+  }
+  
+  // 监听应用状态变化
+  function setupAppStateListeners() {
+    try {
+      // 页面可见性API
+      document.addEventListener('visibilitychange', function() {
+        try {
+          if (document.hidden) {
+            appState = 'background';
+            pauseBackgroundTasks();
+          } else {
+            appState = 'foreground';
+            resumeForegroundTasks();
+          }
+        } catch (error) {
+          handleError(error, 'visibilitychange listener');
+        }
+      });
+      
+      // 页面聚焦/失焦
+      window.addEventListener('focus', function() {
+        try {
+          appState = 'foreground';
+          resumeForegroundTasks();
+        } catch (error) {
+          handleError(error, 'focus listener');
+        }
+      });
+      
+      window.addEventListener('blur', function() {
+        try {
+          appState = 'background';
+          pauseBackgroundTasks();
+        } catch (error) {
+          handleError(error, 'blur listener');
+        }
+      });
+    } catch (error) {
+      handleError(error, 'setupAppStateListeners');
+    }
+  }
+  
+  // 暂停后台任务
+  function pauseBackgroundTasks() {
+    if (tradeUpdateInterval) {
+      clearInterval(tradeUpdateInterval);
+      tradeUpdateInterval = null;
+    }
+    if (signalFetchInterval) {
+      clearInterval(signalFetchInterval);
+      signalFetchInterval = null;
+    }
+    console.log('[App] 后台任务已暂停');
+  }
+  
+  // 恢复前台任务
+  function resumeForegroundTasks() {
+    if (!tradeUpdateInterval) {
+      tradeUpdateInterval = setInterval(updateTradeV1UI, 2000);
+    }
+    if (!signalFetchInterval) {
+      signalFetchInterval = setInterval(async () => {
+        if (appState === 'foreground') {
+          await fetchSignalData();
+        }
+      }, 60000); // 1分钟更新一次信号
+    }
+    console.log('[App] 前台任务已恢复');
+  }
+  
+  // 初始化应用状态监听
+  setupAppStateListeners();
+  
   initTradeSettings()
   
   // 初始化交易系统V1
@@ -4284,9 +4368,190 @@ document.addEventListener('DOMContentLoaded', () => {
     updateTradeV1UI()
   }, 500)
   
-  // 定期更新
-  setInterval(updateTradeV1UI, 2000)
+  // 启动前台任务
+  resumeForegroundTasks();
 })
+
+// 切换交易历史部分显示/隐藏
+function toggleHistorySection() {
+  const content = document.getElementById('historyContent')
+  const icon = document.getElementById('historyToggleIcon')
+  
+  if (content.style.display === 'none' || content.style.display === '') {
+    content.style.display = 'block'
+    icon.textContent = '▲'
+    updateTradeHistory()
+    updatePerformanceCharts()
+  } else {
+    content.style.display = 'none'
+    icon.textContent = '▼'
+  }
+}
+
+// 更新交易历史
+function updateTradeHistory() {
+  if (!window.Simulator) return
+  
+  const trades = window.Simulator.trades || []
+  const historyItems = document.getElementById('tradeHistoryItems')
+  
+  if (trades.length === 0) {
+    historyItems.innerHTML = `
+      <div class="history-empty">
+        <span>暂无交易记录</span>
+      </div>
+    `
+    return
+  }
+  
+  const tradeHTML = trades.map((t, index) => {
+    const isWin = t.pnl > 0
+    const direction = t.type === 'long' ? '做多' : '做空'
+    const pnlClass = isWin ? 'win' : 'loss'
+    
+    return `
+      <div class="history-item">
+        <span>${index + 1}</span>
+        <span>${t.closeTimeStr || t.entryTimeStr}</span>
+        <span>${direction}</span>
+        <span>${t.entryPrice.toFixed(2)}</span>
+        <span>${t.closePrice.toFixed(2)}</span>
+        <span class="${pnlClass}">${t.pnl > 0 ? '+' : ''}${t.pnl.toFixed(2)}</span>
+      </div>
+    `
+  }).join('')
+  
+  historyItems.innerHTML = tradeHTML
+}
+
+// 更新绩效分析图表
+function updatePerformanceCharts() {
+  if (!window.Simulator) return
+  
+  const trades = window.Simulator.trades || []
+  
+  // 绘制资金曲线
+  drawEquityChart(trades)
+  
+  // 绘制胜率趋势
+  drawWinRateChart(trades)
+}
+
+// 绘制资金曲线
+function drawEquityChart(trades) {
+  const canvas = document.getElementById('equityChart')
+  if (!canvas) return
+  
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  if (trades.length === 0) {
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '14px Arial'
+    ctx.textAlign = 'center'
+    ctx.fillText('暂无数据', canvas.width / 2, canvas.height / 2)
+    return
+  }
+  
+  // 计算资金曲线
+  let balance = 1000 // 初始资金
+  const equityData = [balance]
+  
+  trades.forEach(trade => {
+    balance += trade.pnl
+    equityData.push(balance)
+  })
+  
+  // 绘制曲线
+  ctx.strokeStyle = '#3b82f6'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  
+  const stepX = canvas.width / (equityData.length - 1)
+  const minY = Math.min(...equityData)
+  const maxY = Math.max(...equityData)
+  const rangeY = maxY - minY || 1
+  
+  equityData.forEach((value, index) => {
+    const x = index * stepX
+    const y = canvas.height - ((value - minY) / rangeY) * canvas.height * 0.8 - canvas.height * 0.1
+    
+    if (index === 0) {
+      ctx.moveTo(x, y)
+    } else {
+      ctx.lineTo(x, y)
+    }
+  })
+  
+  ctx.stroke()
+  
+  // 绘制坐标轴
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(0, canvas.height - 20)
+  ctx.lineTo(canvas.width, canvas.height - 20)
+  ctx.moveTo(20, 0)
+  ctx.lineTo(20, canvas.height)
+  ctx.stroke()
+}
+
+// 绘制胜率趋势
+function drawWinRateChart(trades) {
+  const canvas = document.getElementById('winRateChart')
+  if (!canvas) return
+  
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  if (trades.length === 0) {
+    ctx.fillStyle = '#94a3b8'
+    ctx.font = '14px Arial'
+    ctx.textAlign = 'center'
+    ctx.fillText('暂无数据', canvas.width / 2, canvas.height / 2)
+    return
+  }
+  
+  // 计算胜率趋势（每5笔交易为一个周期）
+  const winRateData = []
+  const period = 5
+  
+  for (let i = 0; i < trades.length; i += period) {
+    const periodTrades = trades.slice(i, i + period)
+    const wins = periodTrades.filter(t => t.pnl > 0).length
+    const winRate = periodTrades.length > 0 ? (wins / periodTrades.length) * 100 : 0
+    winRateData.push(winRate)
+  }
+  
+  // 绘制柱状图
+  const barWidth = canvas.width / winRateData.length * 0.8
+  const barSpacing = canvas.width / winRateData.length * 0.2
+  
+  winRateData.forEach((rate, index) => {
+    const x = index * (barWidth + barSpacing)
+    const height = (rate / 100) * canvas.height * 0.8
+    const y = canvas.height - height - 20
+    
+    ctx.fillStyle = rate >= 50 ? '#10b981' : '#ef4444'
+    ctx.fillRect(x, y, barWidth, height)
+    
+    // 绘制数值
+    ctx.fillStyle = '#f8fafc'
+    ctx.font = '10px Arial'
+    ctx.textAlign = 'center'
+    ctx.fillText(`${rate.toFixed(0)}%`, x + barWidth / 2, y - 5)
+  })
+  
+  // 绘制坐标轴
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(0, canvas.height - 20)
+  ctx.lineTo(canvas.width, canvas.height - 20)
+  ctx.moveTo(20, 0)
+  ctx.lineTo(20, canvas.height)
+  ctx.stroke()
+}
 
 // 查看详细统计
 function showSimulatorStats() {

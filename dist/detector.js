@@ -67,6 +67,18 @@ async function fetchKlines(interval, limit) {
   throw new Error('所有数据源失败: ' + (lastErr ? lastErr.message : ''));
 }
 
+/** 计算平均成交量 */
+function getAverageVolume(bars, period) {
+  period = period || 20;
+  if (bars.length < period) return 0;
+  
+  var sum = 0;
+  for (var i = bars.length - period; i < bars.length; i++) {
+    sum += bars[i].volume;
+  }
+  return sum / period;
+}
+
 /** 计算ATR用于动态止损 */
 function calculateATR(bars, period) {
   period = period || 14;
@@ -166,30 +178,42 @@ function checkMultiPeriodResonance(currentBars, higherBars) {
 /** 信号强度评分系统 (1-5星) */
 function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var score = 0;
-  var maxScore = 25;
+  var maxScore = 35; // 增加最大分数，使评分更加严格
   
+  // 基础条件评分
   var baseConditionsMet = conditions.filter(function(c) { return c.ok; }).length;
-  score += Math.min(baseConditionsMet, 4) * 1.25;
+  score += baseConditionsMet * 2; // 增加基础条件权重
   
-  if (resonance.trend_aligned) score += 3;
-  if (resonance.rsi_extreme) score += 2;
-  if (resonance.macd_aligned) score += 3;
-  if (resonance.volume_confirmed) score += 2;
+  // 多周期共振评分
+  if (resonance.trend_aligned) score += 5;
+  if (resonance.rsi_extreme) score += 3;
+  if (resonance.macd_aligned) score += 4;
+  if (resonance.volume_confirmed) score += 3;
   
+  // 趋势强度评分
   var trend = determineTrend(bars);
-  if (trend.trend === 'strong_bull' || trend.trend === 'strong_bear') score += 5;
-  else if (trend.trend === 'bull' || trend.trend === 'bear') score += 3;
+  if (trend.trend === 'strong_bull' || trend.trend === 'strong_bear') score += 6;
+  else if (trend.trend === 'bull' || trend.trend === 'bear') score += 4;
   else if (trend.trend === 'neutral') score += 1;
   
+  // 波动率评分
   var atrValues = calculateATR(bars);
   var currentATR = atrValues[atrValues.length - 1];
   var price = bars[bars.length - 1].close;
   var atrPercent = (currentATR / price) * 100;
   
-  if (atrPercent >= 2 && atrPercent <= 4) score += 5;
-  else if (atrPercent >= 1 && atrPercent <= 5) score += 3;
-  else if (atrPercent >= 0.5 && atrPercent <= 8) score += 1;
+  if (atrPercent >= 2 && atrPercent <= 4) score += 6;
+  else if (atrPercent >= 1 && atrPercent <= 5) score += 4;
+  else if (atrPercent >= 0.5 && atrPercent <= 8) score += 2;
   
+  // 成交量评分
+  var avgVolume = getAverageVolume(bars, 20);
+  var lastVolume = bars[bars.length - 1].volume;
+  if (lastVolume > avgVolume * 1.5) score += 3;
+  else if (lastVolume > avgVolume * 1.2) score += 2;
+  else if (lastVolume > avgVolume) score += 1;
+  
+  // 计算最终星级评分（1-5星）
   var starScore = Math.round(score / maxScore * 5);
   return Math.min(Math.max(starScore, 1), 5);
 }
@@ -333,8 +357,32 @@ async function detectSignal(interval) {
   var c4Short = macdBar < macdPrev || (macdData.dif[n] < macdData.dea[n] && macdData.dif[n-1] >= macdData.dea[n-1]);
   
   var signalType = null;
-  if (isLongPin && c2Long && c4Long) signalType = 'long';
-  if (isShortPin && c2Short && c4Short) signalType = 'short';
+  
+  // 增强的信号检测条件
+  var volumeConditions = {
+    long: prevBar.volume > getAverageVolume(bars, 20) * 1.2,
+    short: prevBar.volume > getAverageVolume(bars, 20) * 1.2
+  };
+  
+  var rsiConditions = {
+    long: rsiVal < 40,  // 超卖区域
+    short: rsiVal > 60  // 超买区域
+  };
+  
+  var bollConditions = {
+    long: lastBar.close < bollLast.lower,
+    short: lastBar.close > bollLast.upper
+  };
+  
+  // 增强的做多信号条件
+  if (isLongPin && c2Long && c4Long && volumeConditions.long && rsiConditions.long) {
+    signalType = 'long';
+  }
+  
+  // 增强的做空信号条件
+  if (isShortPin && c2Short && c4Short && volumeConditions.short && rsiConditions.short) {
+    signalType = 'short';
+  }
   
   var longConditions = [
     { label: '下影插针', ok: isLongPin, tip: '下影' + lowerShadow.toFixed(0) + ' vs 实体' + body.toFixed(0) },

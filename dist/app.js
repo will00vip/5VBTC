@@ -43,6 +43,27 @@ const CONFIG = {
   }
 }
 
+// ── 错误处理工具 ──
+function handleError(error, context) {
+  console.error(`[${context}] 错误:`, error)
+  // 可以在这里添加错误日志上报逻辑
+  return null
+}
+
+// 全局错误捕获
+window.onerror = function(message, source, lineno, colno, error) {
+  console.error('[全局错误]', message, error)
+  // 可以在这里添加错误日志上报逻辑
+  return true
+}
+
+// 全局Promise错误捕获
+window.addEventListener('unhandledrejection', function(event) {
+  console.error('[未处理的Promise错误]', event.reason)
+  // 可以在这里添加错误日志上报逻辑
+  event.preventDefault()
+})
+
 // ── 高级技术指标 ──
 function ema(arr, n) {
   const k = 2/(n+1), res = []
@@ -761,7 +782,7 @@ async function fetchKlines(interval = '15m', limit = 200) {
       console.log(`[数据源] ${src.name} OK interval=${interval}`)
       return data
     } catch (e) {
-      console.warn(`[数据源] ${src.name} 失败:`, e.message)
+      handleError(e, `数据源 ${src.name}`)
       lastErr = e
     }
   }
@@ -770,7 +791,9 @@ async function fetchKlines(interval = '15m', limit = 200) {
     console.warn('[数据源] 全部失败，返回旧缓存')
     return _klinesCache[cacheKey].data
   }
-  throw lastErr || new Error('所有数据源均失败')
+  const error = lastErr || new Error('所有数据源均失败')
+  handleError(error, 'fetchKlines')
+  throw error
 }
 
 // 强制刷新（清缓存）
@@ -1594,8 +1617,8 @@ class SimulatorEngine {
   constructor() {
     this.trades = []           // 全部交易
     this.positions = []        // 当前持仓
-    this.equity = 100          // 总权益
-    this.balance = 100         // 可用余额
+    this.equity = 1000         // 总权益
+    this.balance = 1000        // 可用余额
     this.totalFee = 0          // 累计手续费
     this.totalSlippage = 0     // 累计滑点损失
     this.totalFunding = 0      // 累计资金费率
@@ -1612,8 +1635,8 @@ class SimulatorEngine {
       const saved = JSON.parse(localStorage.getItem('btc_simulator') || '{}')
       this.trades = saved.trades || []
       this.positions = saved.positions || []
-      this.equity = saved.equity || 100
-      this.balance = saved.balance || 100
+      this.equity = saved.equity || 1000
+      this.balance = saved.balance || 1000
       this.totalFee = saved.totalFee || 0
       this.totalSlippage = saved.totalSlippage || 0
       this.totalFunding = saved.totalFunding || 0
