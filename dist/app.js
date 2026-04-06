@@ -248,6 +248,92 @@ function determineTrend(bars) {
   }
 }
 
+// ── 成交量分析 ──
+function analyzeVolume(bars) {
+  const volumes = bars.map(b => b.volume)
+  const n = volumes.length - 1
+  
+  // 计算20日平均成交量
+  const avgVolume20 = volumes.slice(Math.max(0, n-19), n+1).reduce((a, b) => a + b, 0) / Math.min(20, n+1)
+  const currentVolume = volumes[n]
+  
+  // 计算成交量与价格的配合关系
+  const closes = bars.map(b => b.close)
+  const priceChange = (closes[n] - closes[n-1]) / closes[n-1] * 100
+  
+  // 放量判断
+  const isVolumeSpike = currentVolume > avgVolume20 * 2 // 异常放量
+  const isVolumeUpWithPrice = priceChange > 0 && currentVolume > avgVolume20 * 1.5 // 价涨量增
+  const isVolumeDownWithPrice = priceChange < 0 && currentVolume > avgVolume20 * 1.5 // 价跌量增
+  
+  return {
+    currentVolume,
+    avgVolume20,
+    volumeRatio: currentVolume / avgVolume20,
+    isVolumeSpike,
+    isVolumeUpWithPrice,
+    isVolumeDownWithPrice
+  }
+}
+
+// ── 多周期共振分析 ──
+function analyzeMultiPeriodResonance(periodsData) {
+  const trends = []
+  let resonanceScore = 0
+  
+  // 分析每个周期的趋势
+  for (const period in periodsData) {
+    const data = periodsData[period]
+    const trend = determineTrend(data.bars)
+    trends.push({ period, trend: trend.trend })
+  }
+  
+  // 计算共振强度
+  const bullCount = trends.filter(t => t.trend.includes('bull')).length
+  const bearCount = trends.filter(t => t.trend.includes('bear')).length
+  
+  // 权重体系：长周期权重更高
+  const periodWeights = {
+    '1m': 1,
+    '5m': 2,
+    '15m': 3,
+    '1h': 4,
+    '4h': 5,
+    '1d': 6,
+    '1w': 7
+  }
+  
+  // 计算加权共振分数
+  let weightedBullScore = 0
+  let weightedBearScore = 0
+  let totalWeight = 0
+  
+  for (const t of trends) {
+    const weight = periodWeights[t.period] || 1
+    totalWeight += weight
+    
+    if (t.trend === 'strong_bull') weightedBullScore += weight * 2
+    else if (t.trend === 'bull') weightedBullScore += weight * 1
+    else if (t.trend === 'strong_bear') weightedBearScore += weight * 2
+    else if (t.trend === 'bear') weightedBearScore += weight * 1
+  }
+  
+  if (totalWeight > 0) {
+    const bullRatio = weightedBullScore / totalWeight
+    const bearRatio = weightedBearScore / totalWeight
+    
+    if (bullRatio > 0.7) resonanceScore = Math.round(bullRatio * 100)
+    else if (bearRatio > 0.7) resonanceScore = -Math.round(bearRatio * 100)
+  }
+  
+  return {
+    trends,
+    resonanceScore,
+    bullCount,
+    bearCount
+  }
+}
+
 // ── 市场状态识别 ──
 function detectMarketState(bars) {
   const closes = bars.map(b => b.close)
@@ -982,6 +1068,18 @@ async function detectSignal(interval = '15m') {
     let signalType = null
     let signalConfidence = 0
 
+    // 成交量分析
+    const volumeAnalysis = analyzeVolume(bars)
+    
+    // 多周期共振分析
+    const periodsData = {
+      '15m': { bars: bars },
+      '1h': { bars: bars },
+      '4h': { bars: bars },
+      '1d': { bars: bars }
+    }
+    const resonanceAnalysis = analyzeMultiPeriodResonance(periodsData)
+
     // 做多信号
     if (isLongPin) {
       let longScore = 40  // 插针形态基础分
@@ -992,6 +1090,14 @@ async function detectSignal(interval = '15m') {
       // 大周期趋势加/减分
       if (higherIsBull) longScore += 10       // 顺势做多 +10
       else if (higherIsBear) longScore -= 15  // 逆势做多 -15（强烈降分）
+      
+      // 成交量分析加分
+      if (volumeAnalysis.isVolumeUpWithPrice) longScore += 10  // 价涨量增
+      else if (volumeAnalysis.isVolumeSpike) longScore += 5     // 异常放量
+      
+      // 多周期共振加分
+      if (resonanceAnalysis.resonanceScore > 70) longScore += 10  // 强共振
+      else if (resonanceAnalysis.resonanceScore > 50) longScore += 5   // 中等共振
 
       if (longScore >= 60) {
         signalType = 'long'
@@ -1009,6 +1115,14 @@ async function detectSignal(interval = '15m') {
       // 大周期趋势加/减分
       if (higherIsBear) shortScore += 10       // 顺势做空 +10
       else if (higherIsBull) shortScore -= 15  // 逆势做空 -15
+      
+      // 成交量分析加分
+      if (volumeAnalysis.isVolumeDownWithPrice) shortScore += 10  // 价跌量增
+      else if (volumeAnalysis.isVolumeSpike) shortScore += 5       // 异常放量
+      
+      // 多周期共振加分
+      if (resonanceAnalysis.resonanceScore < -70) shortScore += 10  // 强共振
+      else if (resonanceAnalysis.resonanceScore < -50) shortScore += 5   // 中等共振
 
       if (shortScore >= 60 && shortScore > Math.abs(signalConfidence)) {
         signalType = 'short'
@@ -1117,6 +1231,12 @@ async function detectSignal(interval = '15m') {
       
       // 仓位建议
       positionAdvice,
+      
+      // 成交量分析
+      volumeAnalysis,
+      
+      // 多周期共振分析
+      resonanceAnalysis,
       
       // 原始数据
       lastBar,
