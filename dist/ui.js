@@ -1098,7 +1098,56 @@ function _pushNotification(result) {
     let directionText, qualityTag
     const scoreStars = '⭐'.repeat(Math.min(result.signalStrength || 3, 5))
     const price = result.bars ? result.bars[result.bars.length - 1].close : '--'
-    const score = result.signalConfidence || result.signalStrength || 0
+    
+    // 计算综合评分（与UI显示一致）
+    let score = 25  // 基础分25
+    if (result.signalConfidence && result.signalConfidence !== 0) {
+      score = Math.round(result.signalConfidence)  // 有插针信号时使用信号分数
+    } else {
+      // 无插针信号：用技术指标打基础分(0-50)
+      // 趋势加分
+      if (result.trend) {
+        if (result.trend.includes('上涨') || result.trend.includes('多头')) score += 8
+        else if (result.trend.includes('下跌') || result.trend.includes('空头')) score -= 5
+      }
+      // RSI加分
+      if (result.rsiVal !== undefined) {
+        const rsi = result.rsiVal
+        if (rsi < 30) score += 8
+        else if (rsi < 40) score += 5
+        else if (rsi < 50) score += 3
+        else if (rsi > 70) score -= 5
+        else if (rsi > 60) score -= 3
+        else if (rsi > 50) score += 1
+      }
+      // MACD加分
+      if (result.macdBar !== undefined) {
+        if (result.macdBar > 0) score += 7
+        else if (result.macdBar < 0) score -= 4
+      }
+      // KDJ加分
+      if (result.jVal !== undefined) {
+        if (result.jVal < 20) score += 6
+        else if (result.jVal > 80) score -= 4
+      }
+      // BOLL加分
+      if (result.bollPercent !== undefined) {
+        const boll = result.bollPercent
+        if (boll < 10) score += 6
+        else if (boll < 30) score += 4
+        else if (boll < 40) score += 2
+        else if (boll > 80) score -= 3
+        else if (boll > 70) score -= 2
+      }
+      // 确保分数在合理范围内
+      score = Math.max(0, Math.min(50, Math.round(score)))
+      // 根据趋势调整分数符号
+      if (result.trend === 'strong_bull' || result.trend === 'bull') {
+        score = Math.abs(score)
+      } else if (result.trend === 'strong_bear' || result.trend === 'bear') {
+        score = -Math.abs(score)
+      }
+    }
     const absScore = Math.abs(score)
 
     if (result.type) {
