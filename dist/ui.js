@@ -4040,31 +4040,35 @@ function closeAddMoneyModal() {
 
 // 初始化交易设置UI
 function initTradeSettings() {
-  // 读取保存的设置
-  const savedBalance = getSavedBalance()
-  const savedLeverage = getSavedLeverage()
+  // 强制设置为1000U和30倍杠杆
+  const defaultBalance = 1000
+  const defaultLeverage = 30
+  
+  // 清除之前的设置，确保使用新的默认值
+  localStorage.setItem('trade_balance', defaultBalance.toString())
+  localStorage.setItem('trade_leverage', defaultLeverage.toString())
   
   const balanceInput = document.getElementById('tradeBalance')
   const leverageInput = document.getElementById('tradeLeverage')
   
   if (balanceInput) {
-    balanceInput.value = savedBalance
+    balanceInput.value = defaultBalance
   }
   
   if (leverageInput) {
-    leverageInput.value = savedLeverage
+    leverageInput.value = defaultLeverage
   }
   
   // 如果Simulator已加载，设置其余额
   if (window.Simulator) {
-    window.Simulator.balance = savedBalance
-    window.Simulator.equity = savedBalance
-    sessionInitialBalance = savedBalance
+    window.Simulator.balance = defaultBalance
+    window.Simulator.equity = defaultBalance
+    sessionInitialBalance = defaultBalance
   }
   
   // 设置杠杆
   if (window.SimTrader) {
-    window.SimTrader.PARAMS.LEVERAGE = savedLeverage
+    window.SimTrader.PARAMS.LEVERAGE = defaultLeverage
   }
 }
 
@@ -4095,6 +4099,25 @@ function updateTradeV1UI() {
     }
     
     console.log(`[Trade] 第${currentRound}轮资金已自动添加: 1000U`)
+  }
+  
+  // 显示当前轮次信息
+  const roundInfoEl = document.getElementById('roundInfo')
+  if (!roundInfoEl) {
+    // 创建轮次信息元素
+    const tradeHeader = document.querySelector('.trade-v1-header')
+    if (tradeHeader) {
+      const roundInfo = document.createElement('div')
+      roundInfo.id = 'roundInfo'
+      roundInfo.className = 'trade-v1-round-info'
+      roundInfo.style.cssText = 'color: #f8fafc; font-size: 12px; margin-left: 10px;'
+      tradeHeader.appendChild(roundInfo)
+    }
+  }
+  
+  const updatedRoundInfoEl = document.getElementById('roundInfo')
+  if (updatedRoundInfoEl) {
+    updatedRoundInfoEl.textContent = `第${currentRound}轮`
   }
   
   // 获取统计数据
