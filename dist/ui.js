@@ -1261,14 +1261,20 @@ function autoSaveSignalRecord(result) {
 // ★ 推送到手机（PushDeer）
 function _pushNotification(result) {
   try {
+    // 直接使用与UI相同的calculateOverallScore函数计算分数
+    const score = calculateOverallScore(result)
+    const absScore = Math.abs(score)
+    
+    // 0-60分的信号不推送
+    if (absScore < 60) {
+      console.log('信号分数低于60，不推送通知:', score)
+      return
+    }
+    
     // 确定方向文本
     let directionText, qualityTag
     const scoreStars = '⭐'.repeat(Math.min(result.signalStrength || 3, 5))
     const price = result.bars ? result.bars[result.bars.length - 1].close : '--'
-    
-    // 直接使用与UI相同的calculateOverallScore函数计算分数
-    const score = calculateOverallScore(result)
-    const absScore = Math.abs(score)
 
     if (result.type) {
       // 有信号：做多或做空
