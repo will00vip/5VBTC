@@ -674,6 +674,9 @@ async function fetchSignalData() {
   }
 }
 
+// 倒计时计时器变量
+let countdownTimer = null
+
 // 处理信号结果
 function processSignalResult(result) {
   const now = new Date()
@@ -811,6 +814,135 @@ function processSignalResult(result) {
       }
     }
   } catch(e) { console.warn('[backtest]', e) }
+  
+  // ── 启动倒计时 ──
+  const score = Math.abs(result.signalConfidence || 0)
+  if (isRealSignal && score >= 60) {
+    startCountdown(result)
+  } else {
+    // 检查是否有有效的缓存信号
+    const cache = getValidSignalCache()
+    if (cache && Math.abs(cache.signalConfidence) >= 60) {
+      startCountdown(cache)
+    } else {
+      // 无信号或分数低于60，隐藏倒计时
+      const countdownEl = document.getElementById('signalCountdown')
+      if (countdownEl) countdownEl.style.display = 'none'
+      if (countdownTimer) {
+        clearInterval(countdownTimer)
+        countdownTimer = null
+      }
+    }
+  }
+}
+
+// 启动倒计时
+function startCountdown(result) {
+  // 清除之前的计时器
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+  
+  const startTime = Date.now()
+  const duration = 120 * 1000 // 120秒
+  
+  // 显示倒计时元素
+  const countdownEl = document.getElementById('signalCountdown')
+  const countdownText = document.getElementById('countdownText')
+  const countdownProgress = document.getElementById('countdownProgress')
+  
+  if (countdownEl) countdownEl.style.display = 'block'
+  
+  // 更新倒计时
+  function updateCountdown() {
+    const elapsed = Date.now() - startTime
+    const remaining = Math.max(0, duration - elapsed)
+    const seconds = Math.floor(remaining / 1000)
+    const percentage = (remaining / duration) * 100
+    
+    // 更新文本和进度条
+    if (countdownText) {
+      countdownText.textContent = `信号有效期：${seconds}秒`
+    }
+    if (countdownProgress) {
+      countdownProgress.style.width = `${percentage}%`
+    }
+    
+    // 显示信号状态和止盈止损信息
+    displaySignalInfo(result)
+    
+    // 倒计时结束
+    if (remaining <= 0) {
+      if (countdownEl) countdownEl.style.display = 'none'
+      if (countdownTimer) {
+        clearInterval(countdownTimer)
+        countdownTimer = null
+      }
+    }
+  }
+  
+  // 立即执行一次
+  updateCountdown()
+  
+  // 设置计时器
+  countdownTimer = setInterval(updateCountdown, 1000)
+}
+
+// 显示信号信息
+function displaySignalInfo(result) {
+  // 显示信号状态（做多/做空）
+  const directionIcon = document.getElementById('directionIcon')
+  const directionText = document.getElementById('directionText')
+  
+  if (directionIcon && directionText && result.type) {
+    const isLong = result.type === 'long'
+    directionIcon.textContent = isLong ? '🟢' : '🔴'
+    directionText.textContent = isLong ? '做多信号' : '做空信号'
+  }
+  
+  // 显示止盈止损信息
+  const tradeLevels = result.tradeLevels
+  if (tradeLevels) {
+    // 入场区间
+    const entryZone = document.getElementById('entryZone')
+    if (entryZone && tradeLevels.entryZone && tradeLevels.entryZone.length === 2) {
+      entryZone.textContent = `${tradeLevels.entryZone[0]} - ${tradeLevels.entryZone[1]}`
+    } else if (entryZone && tradeLevels.entryLevel) {
+      entryZone.textContent = tradeLevels.entryLevel
+    }
+    
+    // 止损位
+    const stopLoss = document.getElementById('stopLoss')
+    if (stopLoss && tradeLevels.stopLoss) {
+      stopLoss.textContent = tradeLevels.stopLoss
+    }
+    
+    // 波动率
+    const atrPercent = document.getElementById('atrPercent')
+    if (atrPercent && tradeLevels.atrPercent) {
+      atrPercent.textContent = tradeLevels.atrPercent + '%'
+    }
+    
+    // 止盈目标
+    if (tradeLevels.takeProfits && tradeLevels.takeProfits.length >= 3) {
+      const tp1 = document.getElementById('tp1')
+      const tp2 = document.getElementById('tp2')
+      const tp3 = document.getElementById('tp3')
+      
+      if (tp1) tp1.textContent = tradeLevels.takeProfits[0]
+      if (tp2) tp2.textContent = tradeLevels.takeProfits[1]
+      if (tp3) tp3.textContent = tradeLevels.takeProfits[2]
+    }
+  }
+  
+  // 确保信号卡片显示
+  const signalCard = document.getElementById('signalCard')
+  if (signalCard) signalCard.style.display = 'block'
+  
+  // 隐藏无信号卡片
+  const noSignalCard = document.getElementById('noSignalCard')
+  if (noSignalCard) noSignalCard.style.display = 'none'
 }
 
 // 信号缓存，用于同步推送和UI显示
@@ -823,7 +955,9 @@ function updateSignalCache(result) {
     signalCache = {
       signalConfidence: result.signalConfidence,
       type: result.type,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      tradeLevels: result.tradeLevels,
+      price: result.bars ? result.bars[result.bars.length - 1].close : 0
     }
   }
 }
