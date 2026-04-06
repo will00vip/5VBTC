@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI 测试 - 指标评分系统</title>
+    <link rel="stylesheet" href="dist/style.css">
+    <style>
+        body {
+            background: #0a0e17;
+            color: #e2e8f0;
+            font-family: -apple-system, 'PingFang SC', sans-serif;
+            padding: 20px;
+        }
+        
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .test-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .test-header h1 {
+            color: #3b82f6;
+            margin-bottom: 10px;
+        }
+        
+        .test-sections {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+        
+        .test-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+        
+        .test-btn {
+            padding: 10px 20px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        .test-btn:hover {
+            background: #2563eb;
+        }
+        
+        .test-btn.secondary {
+            background: #64748b;
+        }
+        
+        .test-btn.secondary:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <div class="test-header">
+            <h1>🎨 新版 UI 测试</h1>
+            <p>测试图片中的指标评分系统设计</p>
+        </div>
+        
+        <div class="test-sections">
+            <!-- 这里会自动加载指标评分UI -->
+            <section class="score-visual-section">
+                <div class="section-title">🎯 综合评分</div>
+                <div class="score-visual-container">
+                    <div class="score-gradient-bar">
+                        <div class="gradient-fill"></div>
+                        <div class="score-marker" id="scoreMarker"></div>
+                    </div>
+                    <div class="score-labels">
+                        <span class="score-label">0</span>
+                        <span class="score-label">20</span>
+                        <span class="score-label">40</span>
+                        <span class="score-label">60</span>
+                        <span class="score-label">80</span>
+                        <span class="score-label">100</span>
+                    </div>
+                </div>
+                <div class="score-action-guide">
+                    <div class="action-item">
+                        <span class="action-range">0-40</span>
+                        <span class="action-text">做空</span>
+                    </div>
+                    <div class="action-item">
+                        <span class="action-range">40-60</span>
+                        <span class="action-text">观望</span>
+                    </div>
+                    <div class="action-item">
+                        <span class="action-range">60-100</span>
+                        <span class="action-text">做多</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 技术指标矩阵 -->
+            <section class="indicators-section">
+                <div class="section-title">📊 指标评分</div>
+                <div class="indicators-grid">
+                    <div class="indicator-card" id="indicatorTREND">
+                        <div class="indicator-header">
+                            <span class="indicator-name">📈 趋势</span>
+                            <span class="indicator-score" id="indicatorTRENDScore">--</span>
+                        </div>
+                        <div class="indicator-status-tag" id="indicatorTRENDStatus">等待</div>
+                        <div class="indicator-hint" id="indicatorTRENDNote">大周期方向</div>
+                    </div>
+                    
+                    <div class="indicator-card" id="indicatorRSI">
+                        <div class="indicator-header">
+                            <span class="indicator-name">📉 RSI</span>
+                            <span class="indicator-score" id="indicatorRSIScore">--</span>
+                        </div>
+                        <div class="indicator-status-tag" id="indicatorRSIStatus">等待</div>
+                        <div class="indicator-hint" id="indicatorRSINote">超买超卖</div>
+                    </div>
+                    
+                    <div class="indicator-card" id="indicatorMACD">
+                        <div class="indicator-header">
+                            <span class="indicator-name">📊 MACD</span>
+                            <span class="indicator-score" id="indicatorMACDScore">--</span>
+                        </div>
+                        <div class="indicator-status-tag" id="indicatorMACDStatus">等待</div>
+                        <div class="indicator-hint" id="indicatorMACDNote">趋势动量</div>
+                    </div>
+                    
+                    <div class="indicator-card" id="indicatorKDJ">
+                        <div class="indicator-header">
+                            <span class="indicator-name">🎯 KDJ</span>
+                            <span class="indicator-score" id="indicatorKDJScore">--</span>
+                        </div>
+                        <div class="indicator-status-tag" id="indicatorKDJStatus">等待</div>
+                        <div class="indicator-hint" id="indicatorKDJNote">随机指标</div>
+                    </div>
+                    
+                    <div class="indicator-card" id="indicatorBOLL">
+                        <div class="indicator-header">
+                            <span class="indicator-name">🔵 BOLL</span>
+                            <span class="indicator-score" id="indicatorBOLLScore">--</span>
+                        </div>
+                        <div class="indicator-status-tag" id="indicatorBOLLStatus">等待</div>
+                        <div class="indicator-hint" id="indicatorBOLLNote">布林带位置</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+        
+        <div class="test-actions">
+            <button class="test-btn" onclick="testBullish()">测试多头行情</button>
+            <button class="test-btn secondary" onclick="testBearish()">测试空头行情</button>
+            <button class="test-btn secondary" onclick="testNeutral()">测试震荡行情</button>
+        </div>
+    </div>
+
+    <script src="dist/ui.js"></script>
+    <script>
+        // 测试数据
+        const testData = {
+            bullish: {
+                dailyTrend: { trend: 'bull' },
+                rsiVal: 45,
+                macdBar: 0.3,
+                jVal: 48,
+                bollLast: { upper: 65000, lower: 62000 },
+                lastBar: { close: 63500 }
+            },
+            bearish: {
+                dailyTrend: { trend: 'bear' },
+                rsiVal: 75,
+                macdBar: -0.4,
+                jVal: 85,
+                bollLast: { upper: 65000, lower: 62000 },
+                lastBar: { close: 64500 }
+            },
+            neutral: {
+                dailyTrend: { trend: 'neutral' },
+                rsiVal: 55,
+                macdBar: 0.05,
+                jVal: 60,
+                bollLast: { upper: 65000, lower: 62000 },
+                lastBar: { close: 63000 }
+            }
+        };
+        
+        // 测试函数
+        function testBullish() {
+            if (window.updateIndicators) {
+                window.updateIndicators(testData.bullish);
+                console.log('多头行情测试完成');
+            }
+        }
+        
+        function testBearish() {
+            if (window.updateIndicators) {
+                window.updateIndicators(testData.bearish);
+                console.log('空头行情测试完成');
+            }
+        }
+        
+        function testNeutral() {
+            if (window.updateIndicators) {
+                window.updateIndicators(testData.neutral);
+                console.log('震荡行情测试完成');
+            }
+        }
+        
+        // 页面加载完成后显示初始状态
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('UI测试页面已加载');
+            console.log('请点击按钮测试不同的行情场景');
+        });
+    </script>
+</body>
+</html>

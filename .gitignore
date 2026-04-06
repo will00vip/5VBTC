@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+*.apk
+*.aab
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+android/capacitor-cordova-plugins/
+.gradle/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dist tracked intentionally (H5 source)
+# dist/
+
+
+
+# Local config
+config.local.js

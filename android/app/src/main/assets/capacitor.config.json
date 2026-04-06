@@ -1,0 +1,10 @@
+{
+	"appId": "com.btcai.radar.v2",
+	"appName": "BTC雷达-V2",
+	"webDir": "dist",
+	"bundledWebRuntime": false,
+	"android": {
+		"allowMixedContent": true,
+		"backgroundColor": "#07090f"
+	}
+}

@@ -1,0 +1,268 @@
+<!-- pages/index/index.wxml v5.0 - 专业交易系统 -->
+<view class="page">
+
+  <!-- ══ 顶部栏 ══ -->
+  <view class="top-header">
+    <view class="top-header-inner">
+      <view class="top-logo">
+        <text class="logo-icon">₿</text>
+        <view class="logo-badge">PRO</view>
+      </view>
+      <view class="top-title">
+        <text class="title-main">BTC·三步法雷达</text>
+        <text class="title-sub">AI量化·多周期共振系统</text>
+      </view>
+      <view class="top-actions">
+        <view class="action-btn" bindtap="toggleSettings">
+          <text class="icon">⚙️</text>
+        </view>
+        <view class="action-btn" bindtap="onRefresh" wx:if="{{!loading}}">
+          <text class="icon">🔄</text>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 周期切换 -->
+    <view class="period-tabs">
+      <view wx:for="{{periods}}" wx:key="iv" 
+            class="period-tab {{item.active ? 'active' : ''}}" 
+            data-interval="{{item.iv}}" 
+            bindtap="switchPeriod">
+        <text class="period-label">{{item.label}}</text>
+        <view class="period-indicator" wx:if="{{item.active}}"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ══ 价格信息 ══ -->
+  <view class="price-section">
+    <view class="price-main">
+      <text class="price-value">{{curPrice}}</text>
+      <text class="price-change {{priceDir}}">{{priceChange}}</text>
+    </view>
+    <view class="price-meta">
+      <view class="meta-item">
+        <text class="meta-label">24H</text>
+        <text class="meta-value">{{price24hChange}}</text>
+      </view>
+      <view class="meta-item">
+        <text class="meta-label">VOL</text>
+        <text class="meta-value">{{volume24h}}</text>
+      </view>
+      <view class="meta-item">
+        <text class="meta-label">更新</text>
+        <text class="meta-value">{{updateTime}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ══ 趋势状态 ══ -->
+  <view class="trend-section" style="background: {{trendColor}}20;">
+    <view class="trend-header">
+      <text class="trend-icon">{{trendIcon}}</text>
+      <text class="trend-label">{{trendLabel}}</text>
+      <view class="trend-ma">
+        <text class="ma-label">MA20:</text>
+        <text class="ma-value">{{ma20}}</text>
+        <text class="ma-label">MA60:</text>
+        <text class="ma-value">{{ma60}}</text>
+      </view>
+    </view>
+    <view class="trend-position">
+      <text class="position-label">价格相对MA20:</text>
+      <text class="position-value {{maPosition > 0 ? 'positive' : 'negative'}}">{{maPosition}}</text>
+    </view>
+  </view>
+
+  <!-- ══ 核心信号卡片 ══ -->
+  <view class="signal-card" wx:if="{{hasSignal}}">
+    <view class="signal-header">
+      <view class="signal-direction">
+        <text class="direction-icon">{{signalType === 'long' ? '🟢' : '🔴'}}</text>
+        <text class="direction-text">{{signalType === 'long' ? '做多信号' : '做空信号'}}</text>
+      </view>
+      <view class="signal-strength">
+        <text class="strength-stars">{{starRating}}</text>
+        <text class="strength-label">{{signalDesc}}</text>
+      </view>
+    </view>
+    
+    <!-- 多周期共振 -->
+    <view class="resonance-section">
+      <text class="section-title">📊 多周期共振分析</text>
+      <view class="resonance-grid">
+        <view class="resonance-item {{resonance.trend_aligned ? 'active' : ''}}">
+          <text class="resonance-icon">🎯</text>
+          <text class="resonance-label">趋势共振</text>
+        </view>
+        <view class="resonance-item {{resonance.rsi_extreme ? 'active' : ''}}">
+          <text class="resonance-icon">📊</text>
+          <text class="resonance-label">RSI共振</text>
+        </view>
+        <view class="resonance-item {{resonance.macd_aligned ? 'active' : ''}}">
+          <text class="resonance-icon">📈</text>
+          <text class="resonance-label">MACD共振</text>
+        </view>
+        <view class="resonance-item {{resonance.volume_confirmed ? 'active' : ''}}">
+          <text class="resonance-icon">📢</text>
+          <text class="resonance-label">放量确认</text>
+        </view>
+      </view>
+      <view class="resonance-meta">
+        <view class="meta-item">
+          <text class="meta-label">当前RSI:</text>
+          <text class="meta-value {{currentRSI < 30 || currentRSI > 70 ? 'extreme' : ''}}">{{currentRSI}}</text>
+        </view>
+        <view class="meta-item">
+          <text class="meta-label">高周期RSI:</text>
+          <text class="meta-value">{{higherRSI}}</text>
+        </view>
+        <view class="meta-item">
+          <text class="meta-label">成交量:</text>
+          <text class="meta-value {{volumeRatio > 1.2 ? 'high' : ''}}">{{volumeRatio}}</text>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 条件详情 -->
+    <view class="conditions-section">
+      <view class="section-header">
+        <text class="section-title">✅ 条件验证 ({{conditionsMet}}/{{conditionsTotal}})</text>
+        <text class="conditions-progress">{{conditionsMet}}/{{conditionsTotal}}</text>
+      </view>
+      <view class="conditions-list">
+        <view wx:for="{{conditions}}" wx:key="label" class="condition-item {{item.ok ? 'ok' : 'not-ok'}}">
+          <text class="condition-icon">{{item.ok ? '✓' : '✗'}}</text>
+          <text class="condition-label">{{item.label}}</text>
+          <text class="condition-tip">{{item.tip}}</text>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 交易计划 -->
+    <view class="trade-plan">
+      <text class="section-title">🎯 交易计划</text>
+      <view class="plan-grid">
+        <view class="plan-item">
+          <text class="plan-label">入场区间</text>
+          <text class="plan-value">{{entryZone[0]}} - {{entryZone[1]}}</text>
+        </view>
+        <view class="plan-item">
+          <text class="plan-label">止损位</text>
+          <text class="plan-value stop-loss">{{stopLoss}}</text>
+        </view>
+        <view class="plan-item">
+          <text class="plan-label">波动率(ATR)</text>
+          <text class="plan-value">{{atrPercent}}</text>
+        </view>
+      </view>
+      <view class="take-profits">
+        <text class="tp-label">止盈目标:</text>
+        <view class="tp-list">
+          <view class="tp-item">
+            <text class="tp-level">TP1</text>
+            <text class="tp-value">{{takeProfits[0]}}</text>
+          </view>
+          <view class="tp-item">
+            <text class="tp-level">TP2</text>
+            <text class="tp-value">{{takeProfits[1]}}</text>
+          </view>
+          <view class="tp-item">
+            <text class="tp-level">TP3</text>
+            <text class="tp-value">{{takeProfits[2]}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 仓位建议 -->
+    <view class="position-section">
+      <view class="section-header">
+        <text class="section-title">💰 仓位建议</text>
+        <text class="position-rating">{{positionAdvice.starRating}}</text>
+      </view>
+      <view class="position-details">
+        <view class="position-item">
+          <text class="pos-label">仓位比例</text>
+          <text class="pos-value">{{positionAdvice.positionRatio}}%</text>
+        </view>
+        <view class="position-item">
+          <text class="pos-label">建议张数</text>
+          <text class="pos-value">{{positionAdvice.suggestedContracts}}</text>
+        </view>
+        <view class="position-item">
+          <text class="pos-label">风险金额</text>
+          <text class="pos-value">{{positionAdvice.riskPerTrade}} U</text>
+        </view>
+        <view class="position-item">
+          <text class="pos-label">止损距离</text>
+          <text class="pos-value">{{positionAdvice.stopDistance}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ══ 无信号状态 ══ -->
+  <view class="no-signal-card" wx:if="{{!hasSignal}}">
+    <view class="no-signal-content">
+      <text class="no-signal-icon">👀</text>
+      <text class="no-signal-title">等待交易信号</text>
+      <text class="no-signal-desc">当前无符合条件的交易信号，请耐心等待</text>
+      <view class="no-signal-actions">
+        <view class="action-btn" bindtap="toggleDetails">
+          <text>查看市场分析</text>
+        </view>
+        <view class="action-btn" bindtap="onRefresh">
+          <text>刷新数据</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ══ 技术指标矩阵 ══ -->
+  <view class="indicators-section">
+    <text class="section-title">📈 技术指标矩阵</text>
+    <view class="indicators-grid">
+      <view wx:for="{{indicators}}" wx:key="name" class="indicator-item {{item.status}}">
+        <text class="indicator-name">{{item.name}}</text>
+        <text class="indicator-value">{{item.value}}</text>
+        <text class="indicator-hint">{{item.hint}}</text>
+        <view class="indicator-status {{item.status}}"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ══ 错误提示 ══ -->
+  <view class="error-section" wx:if="{{errorMsg}}">
+    <text class="error-icon">❌</text>
+    <text class="error-text">{{errorMsg}}</text>
+    <view class="error-action" bindtap="fetchSignal">
+      <text>重试</text>
+    </view>
+  </view>
+
+  <!-- ══ 加载状态 ══ -->
+  <view class="loading-section" wx:if="{{loading}}">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">AI分析中...</text>
+  </view>
+
+  <!-- ══ 底部操作栏 ══ -->
+  <view class="bottom-bar">
+    <view class="bottom-actions">
+      <view class="bottom-btn" bindtap="toggleDetails">
+        <text class="btn-icon">📋</text>
+        <text class="btn-label">详情</text>
+      </view>
+      <view class="bottom-btn" bindtap="toggleSettings">
+        <text class="btn-icon">⚙️</text>
+        <text class="btn-label">设置</text>
+      </view>
+      <view class="bottom-btn" bindtap="onRefresh">
+        <text class="btn-icon">🔄</text>
+        <text class="btn-label">刷新</text>
+      </view>
+    </view>
+  </view>
+
+</view>

@@ -1,0 +1,83 @@
+{
+  "app": {
+    "name": "BTC三步法专业交易系统",
+    "version": "2.0",
+    "description": "多周期共振量化交易信号分析"
+  },
+  
+  "algorithm": {
+    "name": "三步法共振算法",
+    "description": "基于插针形态、趋势方向、技术指标共振的专业交易系统",
+    "features": [
+      "多周期共振分析",
+      "ATR动态止损",
+      "信号强度分级",
+      "智能仓位建议"
+    ]
+  },
+  
+  "signals": {
+    "strength_levels": {
+      "5": {
+        "label": "极强信号",
+        "color": "#10b981",
+        "description": "三周期共振，概率极高",
+        "suggested_position_ratio": 0.50
+      },
+      "4": {
+        "label": "强信号",
+        "color": "#3b82f6",
+        "description": "双周期共振，值得参与",
+        "suggested_position_ratio": 0.30
+      },
+      "3": {
+        "label": "中等信号",
+        "color": "#f59e0b",
+        "description": "趋势明确，可轻仓",
+        "suggested_position_ratio": 0.20
+      },
+      "2": {
+        "label": "弱信号",
+        "color": "#ef4444",
+        "description": "形态为主，谨慎参与",
+        "suggested_position_ratio": 0.10
+      },
+      "1": {
+        "label": "观望信号",
+        "color": "#6b7280",
+        "description": "条件不足，继续观察",
+        "suggested_position_ratio": 0.05
+      }
+    },
+  
+    "resonance_conditions": {
+      "trend_aligned": {
+        "label": "趋势共振",
+        "icon": "🎯",
+        "description": "多周期趋势方向一致"
+      },
+      "rsi_extreme": {
+        "label": "RSI共振",
+        "icon": "📊",
+        "description": "多周期RSI超买超卖"
+      },
+      "macd_aligned": {
+        "label": "MACD共振",
+        "icon": "📈",
+        "description": "多周期MACD方向一致"
+      },
+      "volume_confirmed": {
+        "label": "放量确认",
+        "icon": "📢",
+        "description": "成交量显著放大"
+      }
+    },
+  
+    "risk_management": {
+      "default_risk_per_trade": 0.02,
+      "max_position_ratio": 0.50,
+      "leverage": 20,
+      "contract_size": 0.001,
+      "dynamic_stop_loss_multiplier": 1.5
+    }
+  }

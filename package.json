@@ -1,0 +1,16 @@
+{
+  "name": "btc-3step-trading",
+  "version": "1.0.0",
+  "description": "BTC 3-Step Trading Signal Radar - 三步交易法",
+  "main": "dist/index.html",
+  "scripts": {
+    "build": "echo 'No build step needed for static files'",
+    "build:h5": "echo 'No build needed'",
+    "dev": "echo 'Serve dist folder'"
+  },
+  "dependencies": {
+    "@capacitor/android": "^3.9.0",
+    "@capacitor/cli": "^3.9.0",
+    "@capacitor/core": "^3.9.0"
+  }
+}

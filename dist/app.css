@@ -1,0 +1,488 @@
+/* app.css - BTC三步法雷达 PRO v6.2 */
+/* 全新极简深空主题，专注数据展示 */
+
+/* ─── 全局 ─── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0d1117;
+  --bg-card: #161b22;
+  --bg-light: #21262d;
+  --accent: #58a6ff;
+  --text: #e6edf3;
+  --text-dim: #7d8590;
+  --green: #3fb950;
+  --red: #f85149;
+  --yellow: #d29922;
+  --border: rgba(240,246,252,0.1);
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'PingFang SC', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 24px;
+}
+
+#app { max-width: 480px; margin: 0 auto; }
+
+/* ─── 头部 ─── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--accent), #a371f7);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: white; font-weight: bold;
+}
+.logo-title { display: block; font-size: 16px; font-weight: 700; }
+.logo-sub { display: block; font-size: 10px; color: var(--text-dim); }
+
+.header-right { display: flex; gap: 8px; }
+.header-btn {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 16px;
+  transition: all 0.2s;
+}
+.header-btn:hover { background: var(--bg); }
+.header-btn.active { background: rgba(88,166,255,0.15); border-color: var(--accent); }
+.header-btn:active { transform: scale(0.95); }
+
+/* ─── 周期选择 ─── */
+.period-selector {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.period-selector::-webkit-scrollbar { display: none; }
+
+.period-item {
+  flex: 1;
+  min-width: 72px;
+  padding: 10px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+}
+.period-item:hover { background: var(--bg-light); }
+.period-item.active {
+  background: var(--bg-light);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(88,166,255,0.2);
+}
+.period-name { display: block; font-size: 14px; font-weight: 600; }
+.period-desc { display: block; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.period-dot {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px; height: 4px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+/* ─── 价格卡片 ─── */
+.price-card {
+  margin: 12px 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.price-label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+.price-time { font-size: 11px; color: var(--text-dim); }
+.price-value-row { display: flex; align-items: baseline; gap: 12px; }
+.price-main {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+/* ─── 趋势卡片 ─── */
+.trend-card {
+  margin: 0 16px 12px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--t-color);
+  border-radius: 10px;
+}
+.trend-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.trend-icon { font-size: 18px; color: var(--t-color); }
+.trend-label { font-size: 16px; font-weight: 700; }
+.trend-mas {
+  display: flex;
+  gap: 16px;
+}
+.ma-item { display: flex; flex-direction: column; gap: 2px; }
+.ma-label { font-size: 10px; color: var(--text-dim); }
+.ma-value { font-size: 13px; font-weight: 600; }
+.ma-value.up { color: var(--green); }
+.ma-value.down { color: var(--red); }
+
+/* ─── 信号卡片 ─── */
+.signal-card {
+  margin: 12px 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--s-color);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+}
+.signal-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--s-color);
+}
+
+.signal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.signal-type { display: flex; align-items: center; gap: 8px; }
+.type-icon { font-size: 20px; }
+.type-text { font-size: 18px; font-weight: 700; }
+.signal-score { display: flex; align-items: baseline; gap: 2px; }
+.score-num { font-size: 28px; font-weight: 800; }
+.score-label { font-size: 12px; color: var(--text-dim); }
+.signal-level {
+  font-size: 13px;
+  color: var(--s-color);
+  margin-bottom: 16px;
+  padding: 6px 12px;
+  background: var(--s-bg);
+  border-radius: 6px;
+  display: inline-block;
+}
+
+/* 共振矩阵 */
+.共振矩阵 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.共振-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  background: var(--bg-light);
+  border-radius: 8px;
+  opacity: 0.4;
+  transition: all 0.2s;
+}
+.共振-item.on { opacity: 1; background: rgba(88,166,255,0.1); border: 1px solid var(--accent); }
+.共振-icon { font-size: 16px; }
+.共振-text { font-size: 10px; color: var(--text-dim); }
+
+/* 指标网格 */
+.指标-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.指标-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  background: var(--bg-light);
+  border-radius: 8px;
+}
+.指标-label { font-size: 10px; color: var(--text-dim); }
+.指标-val { font-size: 14px; font-weight: 700; }
+
+/* 条件清单 */
+.条件-section {
+  background: var(--bg-light);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+.条件-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.条件-count {
+  background: var(--accent);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.条件-list { display: flex; flex-direction: column; gap: 6px; }
+.条件-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.条件-item.ok { color: var(--green); }
+.条件-icon { font-size: 14px; }
+.条件-text { flex: 1; }
+
+/* 交易计划 */
+.plan-section {
+  background: var(--bg-light);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.plan-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.plan-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: var(--bg-card);
+  border-radius: 8px;
+}
+.plan-item.stop .plan-val { color: var(--red); }
+.plan-label { font-size: 10px; color: var(--text-dim); }
+.plan-val { font-size: 13px; font-weight: 700; }
+
+.tp-section { }
+.tp-title { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; display: block; }
+.tp-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tp-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px;
+  background: var(--bg-card);
+  border-radius: 8px;
+}
+.tp-label { font-size: 10px; color: var(--text-dim); }
+.tp-val { font-size: 13px; font-weight: 700; }
+.tp-val.green { color: var(--green); }
+
+/* 仓位建议 */
+.仓位-section {
+  background: linear-gradient(135deg, rgba(88,166,255,0.1), rgba(163,113,247,0.1));
+  border: 1px solid rgba(88,166,255,0.2);
+  border-radius: 10px;
+  padding: 14px;
+}
+.仓位-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.仓位-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.仓位-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+.仓位-label { font-size: 10px; color: var(--text-dim); }
+.仓位-val { font-size: 14px; font-weight: 700; color: var(--accent); }
+
+/* ─── 无信号状态 ─── */
+.empty-signal {
+  margin: 12px 16px;
+  padding: 40px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  text-align: center;
+}
+.empty-icon {
+  font-size: 48px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+.empty-text {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.empty-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+.empty-tips {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.empty-tips span {
+  padding: 4px 10px;
+  background: var(--bg-light);
+  border-radius: 12px;
+}
+
+/* ─── 技术指标 ─── */
+.indicators-section {
+  margin: 12px 16px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.indicators-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.indicator-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-light);
+  border-left: 3px solid var(--i-color);
+  border-radius: 6px;
+}
+.ind-name { font-size: 12px; color: var(--text-dim); }
+.ind-value { font-size: 14px; font-weight: 700; }
+
+/* ─── 加载状态 ─── */
+.loading-card {
+  margin: 12px 16px;
+  padding: 30px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+.loading-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.loading-dots span {
+  width: 8px; height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+.loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+.loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+.loading-text { font-size: 12px; color: var(--text-dim); }
+
+/* ─── 错误提示 ─── */
+.error-tip {
+  margin: 12px 16px;
+  padding: 14px;
+  background: rgba(248,81,73,0.1);
+  border: 1px solid rgba(248,81,73,0.3);
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--red);
+}
+.retry-btn {
+  padding: 4px 12px;
+  background: rgba(248,81,73,0.2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* ─── 底部信息 ─── */
+.footer-info {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* ─── 动画 ─── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.signal-card, .empty-signal, .price-card, .trend-card {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* ─── 响应式 ─── */
+@media (max-width: 360px) {
+  .共振矩阵 { grid-template-columns: repeat(2, 1fr); }
+  .仓位-grid { grid-template-columns: repeat(2, 1fr); }
+}
