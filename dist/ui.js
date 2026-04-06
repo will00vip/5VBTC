@@ -706,8 +706,9 @@ function processSignalResult(result) {
   // ── 计算并更新综合评分 ──
   try {
     const score = calculateOverallScore(result)
-    // 判断是否有插针信号
-    const hasSignal = result.signalConfidence && result.signalConfidence !== 0
+    // 判断是否有插针信号（使用缓存）
+    const cache = getValidSignalCache()
+    const hasSignal = (result.signalConfidence && result.signalConfidence !== 0) || !!cache
     if (window.updateScoreDial) {
       window.updateScoreDial(score, hasSignal, result.trend)  // 有信号显示分数，无信号显示...
     }
@@ -812,6 +813,31 @@ function processSignalResult(result) {
   } catch(e) { console.warn('[backtest]', e) }
 }
 
+// 信号缓存，用于同步推送和UI显示
+let signalCache = null
+const SIGNAL_CACHE_DURATION = 5 * 60 * 1000 // 5分钟缓存
+
+// 更新信号缓存
+function updateSignalCache(result) {
+  if (result.signalConfidence && result.signalConfidence !== 0) {
+    signalCache = {
+      signalConfidence: result.signalConfidence,
+      type: result.type,
+      timestamp: Date.now()
+    }
+  }
+}
+
+// 检查信号缓存是否有效
+function getValidSignalCache() {
+  if (!signalCache) return null
+  if (Date.now() - signalCache.timestamp > SIGNAL_CACHE_DURATION) {
+    signalCache = null
+    return null
+  }
+  return signalCache
+}
+
 // 计算综合评分 - V7最终版
 // 核心逻辑：
 // 1. 有插针信号 → 使用 signalConfidence（正数做多60-100，负数做空-100到-60）
@@ -819,8 +845,15 @@ function processSignalResult(result) {
 function calculateOverallScore(result) {
   if (!result) return 25  // 无数据返回偏低分
 
+  // 检查是否有有效的信号缓存
+  const cache = getValidSignalCache()
+  if (cache) {
+    return Math.round(cache.signalConfidence)  // 使用缓存的信号分数
+  }
+
   // ── 1. 有插针信号时：直接返回信号分数 ──
   if (result.signalConfidence && result.signalConfidence !== 0) {
+    updateSignalCache(result)  // 更新信号缓存
     return Math.round(result.signalConfidence)  // 做多正数，做空负数
   }
 
