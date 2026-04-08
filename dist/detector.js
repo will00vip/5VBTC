@@ -429,6 +429,7 @@ async function detectSignal(interval) {
   var result = {
     type: signalType,
     signalStrength: signalStrength,
+    signalConfidence: signalStrength, // 与signalStrength保持一致，供UI和推送使用
     starRating: positionAdvice ? positionAdvice.starRating : '无信号',
     bars: bars,
     higherBars: higherBars,
