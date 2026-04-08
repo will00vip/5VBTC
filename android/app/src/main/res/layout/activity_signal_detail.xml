@@ -78,6 +78,16 @@
                 android:text="当前价格: $45000.00"
                 android:textSize="16sp"
                 android:textColor="#ffffff"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/detailLeverage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="建议杠杆: 30x"
+                android:textSize="16sp"
+                android:textColor="#f39c12"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -185,28 +195,34 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="8dp">
+            android:orientation="vertical"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="24dp">
 
+            <!-- 清除通知按钮 - 更明显的样式 -->
             <Button
                 android:id="@+id/btnClearNotification"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="清除通知"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="🗑️ 清除通知并退出"
                 android:textColor="#ffffff"
-                android:background="#e74c3c"
-                android:layout_marginEnd="8dp" />
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:background="#c0392b"
+                android:layout_marginBottom="12dp"
+                android:elevation="4dp" />
 
+            <!-- 查看详情按钮 -->
             <Button
                 android:id="@+id/btnViewDetails"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="查看详情"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="📱 打开主应用"
                 android:textColor="#ffffff"
-                android:background="#4ecca3"
-                android:layout_marginStart="8dp" />
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:background="#27ae60"
+                android:elevation="4dp" />
         </LinearLayout>
 
     </LinearLayout>

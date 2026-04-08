@@ -155,7 +155,8 @@ public class SignalMonitorService extends Service {
                             long now = System.currentTimeMillis();
                             if (now - lastNotifyTime > COOL_DOWN) {
                                 lastNotifyTime = now;
-                                showSignalNotification(direction, score, result.reason);
+                                showSignalNotification(direction, score, result.reason, 
+                                    result.price, result.stopLoss, result.takeProfit1, result.takeProfit2, result.leverage);
                             }
                         }
                     }
@@ -178,6 +179,11 @@ public class SignalMonitorService extends Service {
         double jValue;
         double macdHist;
         double bollPercent;
+        double price;      // 当前价格
+        double stopLoss;   // 止损价
+        double takeProfit1; // 止盈1
+        double takeProfit2; // 止盈2
+        int leverage;      // 建议杠杆倍数
     }
 
     // 完整技术分析
@@ -331,6 +337,34 @@ public class SignalMonitorService extends Service {
                 result.direction = "观望";
             }
 
+            // 设置当前价格
+            result.price = currentPrice;
+            
+            // 计算止损和止盈（基于ATR或固定百分比）
+            double atr = calculateATR(highs, lows, closes, 14);
+            double atrPercent = (atr / currentPrice) * 100;
+            
+            // 止损：做多时低于入场价，做空时高于入场价
+            // 使用固定5%止损策略
+            double stopLossPercent = 0.05; // 5%止损
+            
+            if (result.direction.equals("做多")) {
+                result.stopLoss = currentPrice * (1 - stopLossPercent);
+                result.takeProfit1 = currentPrice * 1.02;  // 止盈1: 2%
+                result.takeProfit2 = currentPrice * 1.05;  // 止盈2: 5%
+            } else if (result.direction.equals("做空")) {
+                result.stopLoss = currentPrice * (1 + stopLossPercent);
+                result.takeProfit1 = currentPrice * 0.98;  // 止盈1: 2%
+                result.takeProfit2 = currentPrice * 0.95;  // 止盈2: 5%
+            }
+            
+            // 计算建议杠杆倍数（基于信号强度和波动率）
+            // 分数越高，建议杠杆越高；波动率越低，建议杠杆越高
+            int baseLeverage = 30; // 基础杠杆30倍
+            int scoreBonus = (int) ((Math.abs(result.score) - 60) / 40 * 20); // 最高加20倍
+            int volatilityPenalty = (int) (atrPercent * 2); // 波动率惩罚
+            result.leverage = Math.max(10, Math.min(50, baseLeverage + scoreBonus - volatilityPenalty));
+            
             // 原因说明
             StringBuilder reason = new StringBuilder();
             reason.append("RSI:").append((int)rsi).append(" ");
@@ -338,7 +372,7 @@ public class SignalMonitorService extends Service {
             reason.append("BOLL:").append((int)bollPercent).append("%");
             result.reason = reason.toString();
 
-            Log.d(TAG, "分析结果: rawScore=" + rawScore + ", mappedScore=" + result.score + ", direction=" + result.direction + ", RSI=" + rsi + ", KDJ=" + jValue + ", BOLL%=" + bollPercent);
+            Log.d(TAG, "分析结果: rawScore=" + rawScore + ", mappedScore=" + result.score + ", direction=" + result.direction + ", price=" + currentPrice + ", SL=" + result.stopLoss + ", TP1=" + result.takeProfit1 + ", leverage=" + result.leverage + "x");
 
         } catch (Exception e) {
             Log.e(TAG, "Error analyzing: " + e.getMessage());
@@ -376,6 +410,18 @@ public class SignalMonitorService extends Service {
             ema = (prices.get(i) - ema) * multiplier + ema;
         }
         return ema;
+    }
+
+    private double calculateATR(List<Double> highs, List<Double> lows, List<Double> closes, int period) {
+        if (highs.size() < period + 1) return 0;
+        double sumTR = 0;
+        for (int i = highs.size() - period; i < highs.size(); i++) {
+            double tr1 = highs.get(i) - lows.get(i);
+            double tr2 = Math.abs(highs.get(i) - closes.get(i - 1));
+            double tr3 = Math.abs(lows.get(i) - closes.get(i - 1));
+            sumTR += Math.max(tr1, Math.max(tr2, tr3));
+        }
+        return sumTR / period;
     }
 
     private double[] calculateKDJ(List<Double> highs, List<Double> lows, List<Double> closes, int n, int m1, int m2) {
@@ -432,7 +478,9 @@ public class SignalMonitorService extends Service {
         return sum / period;
     }
 
-    private void showSignalNotification(String direction, int score, String reason) {
+    private void showSignalNotification(String direction, int score, String reason, 
+                                        double price, double stopLoss, double takeProfit1, 
+                                        double takeProfit2, int leverage) {
         // 60分以下的信号不推送
         if (Math.abs(score) < 60) {
             Log.d(TAG, "信号分数低于60，不推送: " + direction + " " + score);
@@ -444,6 +492,11 @@ public class SignalMonitorService extends Service {
         detailIntent.putExtra("direction", direction);
         detailIntent.putExtra("score", score);
         detailIntent.putExtra("reason", reason);
+        detailIntent.putExtra("price", price);
+        detailIntent.putExtra("stopLoss", stopLoss);
+        detailIntent.putExtra("takeProfit1", takeProfit1);
+        detailIntent.putExtra("takeProfit2", takeProfit2);
+        detailIntent.putExtra("leverage", leverage);
         detailIntent.putExtra("timestamp", System.currentTimeMillis());
         detailIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         
@@ -453,15 +506,20 @@ public class SignalMonitorService extends Service {
         String emoji = direction.equals("做多") ? "🟢" : "🔴";
         // 做空信号显示负分数
         String scoreDisplay = direction.equals("做空") ? "-" + Math.abs(score) : String.valueOf(score);
-        String content = emoji + " " + direction + "信号 | " + scoreDisplay + "分\n" + reason;
+        String content = emoji + " " + direction + "信号 | " + scoreDisplay + "分 | " + leverage + "x杠杆\n价格: $" + String.format("%.2f", price);
         
         // 构建大文本通知内容
-        String bigText = content + "\n\n📊 点击通知查看详情\n包括: 打分逻辑、止盈止损、指标分析";
+        StringBuilder bigText = new StringBuilder(content);
+        bigText.append("\n\n📊 交易计划:");
+        if (stopLoss > 0) bigText.append(String.format("\n止损: $%.2f", stopLoss));
+        if (takeProfit1 > 0) bigText.append(String.format("\n止盈1: $%.2f", takeProfit1));
+        if (takeProfit2 > 0) bigText.append(String.format("\n止盈2: $%.2f", takeProfit2));
+        bigText.append("\n\n点击通知查看完整详情");
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("🚨 BTC信号: " + direction + "!")
             .setContentText(content)
-            .setStyle(new NotificationCompat.BigTextStyle().bigText(bigText))
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(bigText.toString()))
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentIntent(pendingIntent)
             .setAutoCancel(false)  // 不自动消失，需要用户手动清除

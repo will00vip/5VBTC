@@ -30,6 +30,7 @@ public class SignalDetailActivity extends AppCompatActivity {
         double stopLoss = intent.getDoubleExtra("stopLoss", 0);
         double takeProfit1 = intent.getDoubleExtra("takeProfit1", 0);
         double takeProfit2 = intent.getDoubleExtra("takeProfit2", 0);
+        int leverage = intent.getIntExtra("leverage", 30);
         long timestamp = intent.getLongExtra("timestamp", System.currentTimeMillis());
         
         // 设置标题
@@ -97,6 +98,14 @@ public class SignalDetailActivity extends AppCompatActivity {
             tp2Text.setText(String.format("止盈2: $%.2f", takeProfit2));
         } else {
             tp2Text.setVisibility(View.GONE);
+        }
+        
+        // 设置杠杆倍数
+        TextView leverageText = findViewById(R.id.detailLeverage);
+        if (leverage > 0) {
+            leverageText.setText(String.format("建议杠杆: %dx", leverage));
+        } else {
+            leverageText.setVisibility(View.GONE);
         }
         
         // 设置打分逻辑

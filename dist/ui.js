@@ -5317,10 +5317,12 @@ function onSignalTrigger(result, price) {
   const direction = result.type
   const isLong = direction === 'long'
 
-  // 获取止损止盈
-  const sl = result.stopLoss || (isLong ? price * 0.995 : price * 1.005)
-  const tp1 = result.takeProfit1 || (isLong ? price * 1.008 : price * 0.992)
-  const tp2 = result.takeProfit2 || (isLong ? price * 1.015 : price * 0.985)
+  // 获取止损止盈 - 从tradeLevels对象中获取
+  const tradeLevels = result.tradeLevels || {}
+  const sl = tradeLevels.stopLoss || (isLong ? price * 0.995 : price * 1.005)
+  const takeProfits = tradeLevels.takeProfits || []
+  const tp1 = takeProfits[0] || (isLong ? price * 1.008 : price * 0.992)
+  const tp2 = takeProfits[1] || (isLong ? price * 1.015 : price * 0.985)
 
   AutoTrade.onSignal(score, direction, price, sl, tp1, tp2)
 }
