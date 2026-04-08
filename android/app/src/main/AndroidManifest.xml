@@ -33,6 +33,18 @@
 
         </activity>
 
+        <!-- ★ 信号详情页面 -->
+        <activity
+            android:name="com.btcai.radar.v2.SignalDetailActivity"
+            android:label="信号详情"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:parentActivityName="com.btcai.radar.v2.MainActivity"
+            android:launchMode="singleTop">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.btcai.radar.v2.MainActivity" />
+        </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

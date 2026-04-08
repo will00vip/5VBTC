@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1a1a2e"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- 标题栏 -->
+        <TextView
+            android:id="@+id/detailTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="信号详情"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="#ffffff"
+            android:gravity="center"
+            android:padding="16dp"
+            android:background="#16213e"
+            android:layout_marginBottom="16dp" />
+
+        <!-- 分数卡片 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#0f3460"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/detailScore"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="82分"
+                android:textSize="48sp"
+                android:textStyle="bold"
+                android:textColor="#4ecca3" />
+
+            <TextView
+                android:id="@+id/detailScoreLevel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✅ 优质信号"
+                android:textSize="18sp"
+                android:textColor="#4ecca3"
+                android:layout_marginTop="8dp" />
+        </LinearLayout>
+
+        <!-- 基本信息 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#16213e"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:id="@+id/detailTime"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="信号时间: 2024-01-01 12:00:00"
+                android:textSize="14sp"
+                android:textColor="#a0a0a0"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/detailPrice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="当前价格: $45000.00"
+                android:textSize="16sp"
+                android:textColor="#ffffff"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 交易计划 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#16213e"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📊 交易计划"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#ffffff"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/detailStopLoss"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="止损价: $44000.00"
+                android:textSize="16sp"
+                android:textColor="#e74c3c"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/detailTakeProfit1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="止盈1: $46000.00"
+                android:textSize="16sp"
+                android:textColor="#4ecca3"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/detailTakeProfit2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="止盈2: $47000.00"
+                android:textSize="16sp"
+                android:textColor="#4ecca3" />
+        </LinearLayout>
+
+        <!-- 打分逻辑 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#16213e"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🧮 打分逻辑"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#ffffff"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/detailLogic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="打分逻辑详情..."
+                android:textSize="14sp"
+                android:textColor="#a0a0a0"
+                android:lineSpacingMultiplier="1.2" />
+        </LinearLayout>
+
+        <!-- 指标详情 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#16213e"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📈 指标详情"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#ffffff"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/detailIndicators"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="RSI: 35 KDJ: 30 BOLL: 25%"
+                android:textSize="14sp"
+                android:textColor="#a0a0a0" />
+        </LinearLayout>
+
+        <!-- 操作按钮 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <Button
+                android:id="@+id/btnClearNotification"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="清除通知"
+                android:textColor="#ffffff"
+                android:background="#e74c3c"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnViewDetails"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="查看详情"
+                android:textColor="#ffffff"
+                android:background="#4ecca3"
+                android:layout_marginStart="8dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

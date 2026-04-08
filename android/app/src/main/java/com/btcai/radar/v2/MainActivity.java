@@ -115,24 +115,54 @@ public class MainActivity extends BridgeActivity {
     }
 
     public void showNotification(String title, String body) {
+        showDetailedNotification(title, body, 0, "", 0, 0, 0, 0);
+    }
+    
+    public void showDetailedNotification(String title, String body, int score, String direction, 
+                                         double price, double stopLoss, double takeProfit1, double takeProfit2) {
         Context context = this;
-        Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-        if (intent != null) {
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+        
+        // 创建跳转到详情页面的Intent
+        Intent detailIntent = new Intent(context, SignalDetailActivity.class);
+        detailIntent.putExtra("direction", direction);
+        detailIntent.putExtra("score", score);
+        detailIntent.putExtra("reason", body);
+        detailIntent.putExtra("price", price);
+        detailIntent.putExtra("stopLoss", stopLoss);
+        detailIntent.putExtra("takeProfit1", takeProfit1);
+        detailIntent.putExtra("takeProfit2", takeProfit2);
+        detailIntent.putExtra("timestamp", System.currentTimeMillis());
+        detailIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, (int) System.currentTimeMillis(), 
+            detailIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(title)
-                .setContentText(body)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true);
+        // 构建通知内容
+        String contentText = body;
+        String bigText = body;
+        
+        // 如果有交易计划信息，添加到通知中
+        if (stopLoss > 0 || takeProfit1 > 0) {
+            bigText += "\n\n📊 交易计划:";
+            if (stopLoss > 0) bigText += String.format("\n止损: $%.2f", stopLoss);
+            if (takeProfit1 > 0) bigText += String.format("\n止盈1: $%.2f", takeProfit1);
+            if (takeProfit2 > 0) bigText += String.format("\n止盈2: $%.2f", takeProfit2);
+        }
 
-            NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (notificationManager != null) {
-                notificationManager.notify((int) System.currentTimeMillis(), builder.build());
-            }
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle(title)
+            .setContentText(contentText)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(bigText))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(false)  // 不自动消失，需要用户手动清除
+            .setOngoing(true)      // 设置为持续通知
+            .setDefaults(NotificationCompat.DEFAULT_ALL);
+
+        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager != null) {
+            notificationManager.notify((int) System.currentTimeMillis(), builder.build());
         }
     }
 }

@@ -131,18 +131,21 @@ public class SignalMonitorService extends Service {
                         // 完整技术分析
                         SignalResult result = analyzeSignalFull(response.toString());
 
-                        Log.d(TAG, "Signal analysis: score=" + result.score + ", direction=" + result.direction);
+                        Log.d(TAG, "Signal analysis: rawScore=" + result.rawScore + ", mappedScore=" + result.score + ", direction=" + result.direction);
 
-                        // 触发通知
+                        // 触发通知 - 使用映射后的分数（做多60-100，做空-100到-60）
                         boolean shouldNotify = false;
                         String direction = "";
-                        int score = result.score;
+                        int score = result.score;  // 使用映射后的分数
 
-                        if (result.score >= 60) {
+                        // 做多信号：分数 >= 60
+                        if (score >= 60) {
                             direction = "做多";
                             shouldNotify = true;
                             lastSignalType = 1;
-                        } else if (result.score <= 40) {
+                        } 
+                        // 做空信号：分数 <= -60
+                        else if (score <= -60) {
                             direction = "做空";
                             shouldNotify = true;
                             lastSignalType = 2;
@@ -167,7 +170,8 @@ public class SignalMonitorService extends Service {
 
     // 完整信号分析结果
     private class SignalResult {
-        int score;
+        int rawScore;      // 原始分数 0-35
+        int score;         // 映射后分数 60-100(做多) 或 -100到-60(做空)
         String direction;
         String reason;
         double rsi;
@@ -224,43 +228,108 @@ public class SignalMonitorService extends Service {
             double ma5 = calculateMA(closes, 5);
             double ma20 = calculateMA(closes, 20);
 
-            // ========== 综合评分 ==========
-            // 与前端 calculateOverallScore() 函数保持同步
-            int score = 0;
+            // ========== 综合评分 (与前端算法保持一致) ==========
+            // 前端算法：0-35分原始分数 → 映射到 60-100(做多) 或 -100到-60(做空)
+            int rawScore = 0;
+            boolean isLongSignal = false;
+            boolean isShortSignal = false;
 
-            // 1. 趋势 (20分)
+            // 1. 趋势评分 (0-6分)
             if (ma5 > ma20) {
-                score += 16;  // 多头
+                rawScore += 6;  // 强势多头
+                isLongSignal = true;
             } else {
-                score += 4;   // 空头
+                rawScore += 1;  // 空头趋势
+                isShortSignal = true;
             }
 
-            // 2. RSI (20分)
-            if (rsi < 35) score += 20;       // 超卖，看多
-            else if (rsi < 45) score += 15;  // 偏低
-            else if (rsi > 65) score += 0;    // 超买
-            else if (rsi > 55) score += 5;    // 偏高
-            else score += 10;                 // 中性
+            // 2. RSI评分 (0-6分) - 超卖加分，超买减分
+            if (rsi < 30) {
+                rawScore += 6;  // 严重超卖，看多
+                isLongSignal = true;
+            } else if (rsi < 40) {
+                rawScore += 4;
+                isLongSignal = true;
+            } else if (rsi > 70) {
+                rawScore += 1;  // 严重超买，看空
+                isShortSignal = true;
+            } else if (rsi > 60) {
+                rawScore += 2;
+                isShortSignal = true;
+            } else {
+                rawScore += 3;  // 中性
+            }
 
-            // 3. MACD (20分)
-            if (macdHist > 0) score += 18;   // 多头
-            else score += 2;                  // 空头
+            // 3. MACD评分 (0-6分)
+            if (macdHist > 0) {
+                rawScore += 6;   // 多头
+                isLongSignal = true;
+            } else {
+                rawScore += 2;    // 空头
+                isShortSignal = true;
+            }
 
-            // 4. KDJ (20分)
-            if (jValue < 30) score += 20;    // 超卖
-            else if (jValue < 45) score += 15;
-            else if (jValue > 70) score += 0;  // 超买
-            else if (jValue > 55) score += 5;
-            else score += 10;
+            // 4. KDJ评分 (0-6分) - 超卖加分
+            if (jValue < 20) {
+                rawScore += 6;    // 严重超卖
+                isLongSignal = true;
+            } else if (jValue < 35) {
+                rawScore += 4;
+                isLongSignal = true;
+            } else if (jValue > 80) {
+                rawScore += 1;    // 严重超买
+                isShortSignal = true;
+            } else if (jValue > 65) {
+                rawScore += 2;
+                isShortSignal = true;
+            } else {
+                rawScore += 3;
+            }
 
-            // 5. BOLL (20分)
-            if (bollPercent < 30) score += 20;   // 接近下轨，看多
-            else if (bollPercent < 40) score += 15;
-            else if (bollPercent > 70) score += 0;  // 接近上轨，看空
-            else if (bollPercent > 60) score += 5;
-            else score += 10;
+            // 5. BOLL评分 (0-6分) - 接近下轨加分，上轨减分
+            if (bollPercent < 20) {
+                rawScore += 6;    // 接近下轨，极度超卖
+                isLongSignal = true;
+            } else if (bollPercent < 30) {
+                rawScore += 4;
+                isLongSignal = true;
+            } else if (bollPercent > 80) {
+                rawScore += 1;    // 接近上轨
+                isShortSignal = true;
+            } else if (bollPercent > 70) {
+                rawScore += 2;
+                isShortSignal = true;
+            } else {
+                rawScore += 3;
+            }
 
-            result.score = Math.min(100, Math.max(0, score));
+            // 确保原始分数在0-35范围内
+            rawScore = Math.min(35, Math.max(0, rawScore));
+            result.rawScore = rawScore;
+
+            // 映射到最终分数：做多 60-100，做空 -100到-60
+            if (isLongSignal && !isShortSignal) {
+                // 纯多头信号
+                result.score = (int) Math.round(60 + (rawScore / 35.0) * 40);
+                result.direction = "做多";
+            } else if (isShortSignal && !isLongSignal) {
+                // 纯空头信号
+                result.score = (int) Math.round(-100 + (rawScore / 35.0) * 40);
+                result.direction = "做空";
+            } else if (isLongSignal && isShortSignal) {
+                // 混合信号，根据分数偏向决定
+                if (rawScore >= 20) {
+                    result.score = (int) Math.round(60 + (rawScore / 35.0) * 40);
+                    result.direction = "做多";
+                } else {
+                    result.score = (int) Math.round(-100 + (rawScore / 35.0) * 40);
+                    result.direction = "做空";
+                }
+            } else {
+                // 观望
+                result.score = 50;
+                result.direction = "观望";
+            }
 
             // 原因说明
             StringBuilder reason = new StringBuilder();
@@ -269,11 +338,7 @@ public class SignalMonitorService extends Service {
             reason.append("BOLL:").append((int)bollPercent).append("%");
             result.reason = reason.toString();
 
-            if (result.score >= 60) result.direction = "做多";
-            else if (result.score <= 40) result.direction = "做空";
-            else result.direction = "观望";
-
-            Log.d(TAG, "分析结果: score=" + result.score + ", RSI=" + rsi + ", KDJ=" + jValue + ", BOLL%=" + bollPercent);
+            Log.d(TAG, "分析结果: rawScore=" + rawScore + ", mappedScore=" + result.score + ", direction=" + result.direction + ", RSI=" + rsi + ", KDJ=" + jValue + ", BOLL%=" + bollPercent);
 
         } catch (Exception e) {
             Log.e(TAG, "Error analyzing: " + e.getMessage());
@@ -368,22 +433,42 @@ public class SignalMonitorService extends Service {
     }
 
     private void showSignalNotification(String direction, int score, String reason) {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+        // 60分以下的信号不推送
+        if (Math.abs(score) < 60) {
+            Log.d(TAG, "信号分数低于60，不推送: " + direction + " " + score);
+            return;
+        }
+        
+        // 创建跳转到详情页面的Intent
+        Intent detailIntent = new Intent(this, SignalDetailActivity.class);
+        detailIntent.putExtra("direction", direction);
+        detailIntent.putExtra("score", score);
+        detailIntent.putExtra("reason", reason);
+        detailIntent.putExtra("timestamp", System.currentTimeMillis());
+        detailIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(), 
+            detailIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         String emoji = direction.equals("做多") ? "🟢" : "🔴";
-        String content = emoji + " " + direction + "信号 | " + score + "分\n" + reason;
+        // 做空信号显示负分数
+        String scoreDisplay = direction.equals("做空") ? "-" + Math.abs(score) : String.valueOf(score);
+        String content = emoji + " " + direction + "信号 | " + scoreDisplay + "分\n" + reason;
+        
+        // 构建大文本通知内容
+        String bigText = content + "\n\n📊 点击通知查看详情\n包括: 打分逻辑、止盈止损、指标分析";
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("🚨 BTC信号: " + direction + "!")
             .setContentText(content)
-            .setStyle(new NotificationCompat.BigTextStyle().bigText(content))
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(bigText))
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
+            .setAutoCancel(false)  // 不自动消失，需要用户手动清除
+            .setOngoing(true)      // 设置为持续通知
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .addAction(android.R.drawable.ic_menu_info_details, "查看详情", pendingIntent)
             .build();
 
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -391,7 +476,7 @@ public class SignalMonitorService extends Service {
             manager.notify((int) System.currentTimeMillis(), notification);
         }
 
-        Log.d(TAG, "Signal notification: " + direction + " " + score);
+        Log.d(TAG, "Signal notification: " + direction + " " + scoreDisplay);
     }
 
     @Override
