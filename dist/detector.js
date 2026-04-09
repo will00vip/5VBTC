@@ -17,6 +17,58 @@ function clearCache(interval) {
   else Object.keys(_cache).forEach(function(k) { delete _cache[k]; });
 }
 
+// ★ 信号历史记录（用于冷却机制）
+var _signalHistory = {
+  lastSignalTime: 0,
+  lastSignalType: null,
+  lastSignalScore: 0,
+  signalCount: 0
+};
+
+// ★ 获取上次信号信息
+function getLastSignalInfo() {
+  return _signalHistory;
+}
+
+// ★ 检查信号冷却 - 防止频繁交易
+function checkSignalCooldown(lastSignal, currentType) {
+  var now = Date.now();
+  var cooldownPeriod = 10 * 60 * 1000; // 10分钟冷却期
+  var minInterval = 5 * 60 * 1000; // 同一方向信号至少间隔5分钟
+  
+  // 如果没有上次信号，允许生成
+  if (!lastSignal || !lastSignal.lastSignalTime) {
+    return true;
+  }
+  
+  var timeSinceLastSignal = now - lastSignal.lastSignalTime;
+  
+  // 10分钟内不生成任何新信号
+  if (timeSinceLastSignal < cooldownPeriod) {
+    console.log('[信号冷却] 冷却期中，剩余:', Math.round((cooldownPeriod - timeSinceLastSignal) / 1000), '秒');
+    return false;
+  }
+  
+  // 如果方向相同，需要更长的间隔（15分钟）
+  if (currentType && currentType === lastSignal.lastSignalType) {
+    if (timeSinceLastSignal < 15 * 60 * 1000) {
+      console.log('[信号冷却] 同方向信号间隔太短');
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+// ★ 记录信号生成
+function recordSignal(signalType, score) {
+  _signalHistory.lastSignalTime = Date.now();
+  _signalHistory.lastSignalType = signalType;
+  _signalHistory.lastSignalScore = score;
+  _signalHistory.signalCount++;
+  console.log('[信号记录] 类型:', signalType, '分数:', score, '时间:', new Date().toLocaleString());
+}
+
 // wx.request 封装成 Promise，带超时（使用全局 wx）
 function fetchJson(url, timeout) {
   timeout = timeout || 6000;
@@ -88,7 +140,7 @@ function calculateATR(bars, period) {
   return atr(highs, lows, closes, period);
 }
 
-/** 判断趋势方向 */
+/** 判断趋势方向和强度 */
 function determineTrend(bars) {
   var closes = bars.map(function(b) { return b.close; });
   var ema20 = ema(closes, 20);
@@ -99,19 +151,41 @@ function determineTrend(bars) {
   var ma20 = ema20[n];
   var ma60 = ema60[n];
   
-  var trend = 'neutral';
-  if (price > ma20 && ma20 > ma60) trend = 'strong_bull';
-  else if (price > ma20 && ma20 > ma60 * 0.98) trend = 'bull';
-  else if (price < ma20 && ma20 < ma60) trend = 'strong_bear';
-  else if (price < ma20 && ma20 < ma60 * 1.02) trend = 'bear';
+  // 计算趋势强度 (0-100)
+  var ma20Slope = (ema20[n] - ema20[n - 5]) / ema20[n - 5] * 100;
+  var ma60Slope = (ema60[n] - ema60[n - 10]) / ema60[n - 10] * 100;
+  var priceToMA20 = (price - ma20) / ma20 * 100;
+  var priceToMA60 = (price - ma60) / ma60 * 100;
+  
+  var trendStrength = 0;
+  var trend = 'sideways';
+  
+  // 强多头：价格在MA20之上，MA20在MA60之上，且都向上
+  if (price > ma20 && ma20 > ma60 && ma20Slope > 0.1) {
+    trend = 'up';
+    trendStrength = Math.min(100, 50 + Math.abs(ma20Slope) * 10 + Math.abs(priceToMA20) * 2);
+  }
+  // 强空头：价格在MA20之下，MA20在MA60之下，且都向下
+  else if (price < ma20 && ma20 < ma60 && ma20Slope < -0.1) {
+    trend = 'down';
+    trendStrength = Math.min(100, 50 + Math.abs(ma20Slope) * 10 + Math.abs(priceToMA20) * 2);
+  }
+  // 震荡市
+  else {
+    trend = 'sideways';
+    trendStrength = Math.max(0, 30 - Math.abs(ma20Slope) * 5);
+  }
   
   return {
     trend: trend,
+    trendStrength: Math.round(trendStrength),
     price: price,
     ma20: ma20,
     ma60: ma60,
     aboveMA20: price > ma20,
-    aboveMA60: price > ma60
+    aboveMA60: price > ma60,
+    ma20Slope: ma20Slope,
+    ma60Slope: ma60Slope
   };
 }
 
@@ -359,6 +433,11 @@ async function detectSignal(interval) {
   
   var signalType = null;
   
+  // ★ 趋势过滤 - 避免震荡市频繁切换
+  var trendInfo = determineTrend(bars);
+  var trendDirection = trendInfo.trend; // 'up', 'down', 'sideways'
+  var trendStrength = trendInfo.strength || 0; // 0-100
+  
   // 增强的信号检测条件
   var volumeConditions = {
     long: prevBar.volume > getAverageVolume(bars, 20) * 1.2,
@@ -375,13 +454,23 @@ async function detectSignal(interval) {
     short: lastBar.close > bollLast.upper
   };
   
-  // 增强的做多信号条件
-  if (isLongPin && c2Long && c4Long && volumeConditions.long && rsiConditions.long) {
+  // ★ 趋势一致性检查 - 只做与趋势方向一致的信号
+  var trendAlignment = {
+    long: trendDirection === 'up' || trendDirection === 'sideways',
+    short: trendDirection === 'down' || trendDirection === 'sideways'
+  };
+  
+  // ★ 信号冷却检查 - 防止频繁交易
+  var lastSignal = getLastSignalInfo();
+  var canGenerateSignal = checkSignalCooldown(lastSignal, signalType);
+  
+  // 增强的做多信号条件（添加趋势过滤）
+  if (isLongPin && c2Long && c4Long && volumeConditions.long && rsiConditions.long && trendAlignment.long && canGenerateSignal) {
     signalType = 'long';
   }
   
-  // 增强的做空信号条件
-  if (isShortPin && c2Short && c4Short && volumeConditions.short && rsiConditions.short) {
+  // 增强的做空信号条件（添加趋势过滤）
+  if (isShortPin && c2Short && c4Short && volumeConditions.short && rsiConditions.short && trendAlignment.short && canGenerateSignal) {
     signalType = 'short';
   }
   
@@ -412,6 +501,9 @@ async function detectSignal(interval) {
       // 做空：0-35 → -100到-60分
       signalStrength = Math.round(-100 + (signalStrength / 35) * 40);
     }
+    
+    // ★ 记录信号生成
+    recordSignal(signalType, signalStrength);
   }
   
   var tradeLevels = signalType ? calculateTradeLevels(signalType, bars) : null;
