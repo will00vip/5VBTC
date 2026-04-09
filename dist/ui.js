@@ -1131,6 +1131,10 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
   
   if (!circle || !scoreText) return
   
+  // 确保圆环的strokeDasharray属性已设置
+  const circumference = 2 * Math.PI * 90
+  circle.style.strokeDasharray = `${circumference} ${circumference}`
+  
   // 获取实际信号分数（用于判断）
   const signalScore = signalResult ? signalResult.signalConfidence || 0 : 0
   const absSignalScore = Math.abs(signalScore)
@@ -1141,24 +1145,22 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
   if (hasStrongSignal) {
     // ★ 60分以上：显示信号和倒计时
     const isLong = signalScore > 0
-    const displayScore = signalScore
     
     // 计算圆环进度
     const percentage = absSignalScore / 100
-    const circumference = 2 * Math.PI * 90
     const offset = circumference - percentage * circumference
     circle.style.strokeDashoffset = offset
     
     if (isLong) {
       circle.style.stroke = '#10b981'  // 绿色做多
       scoreText.style.color = '#10b981'
-      scoreText.textContent = '+' + signalScore
-      if (statusText) statusText.textContent = `做多信号 ${signalScore}分 🐂`
+      scoreText.textContent = '+' + absSignalScore
+      if (statusText) statusText.textContent = `做多信号 ${absSignalScore}分 🐂`
     } else {
       circle.style.stroke = '#ef4444'  // 红色做空
       scoreText.style.color = '#ef4444'
-      scoreText.textContent = signalScore // 已经是负数，直接显示
-      if (statusText) statusText.textContent = `做空信号 ${signalScore}分 🐻`
+      scoreText.textContent = '-' + absSignalScore
+      if (statusText) statusText.textContent = `做空信号 ${absSignalScore}分 🐻`
     }
     
     updateScoreBarIndicator(signalScore, true, isLong ? 'long' : 'short')
@@ -1170,7 +1172,6 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     
   } else {
     // ★ 60分以下：显示震荡/观望状态
-    const circumference = 2 * Math.PI * 90
     
     // 根据趋势显示不同状态
     let statusLabel = '观望'
@@ -1197,7 +1198,8 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     
     // 计算圆环进度
     const percentage = 0.5 // 50% 圆环
-    circle.style.strokeDashoffset = circumference - percentage * circumference
+    const offset = circumference - percentage * circumference
+    circle.style.strokeDashoffset = offset
     circle.style.stroke = statusColor
     scoreText.style.color = statusColor
     
@@ -5303,10 +5305,10 @@ const AutoTrade = {
 
     // 检查是否应该开仓
     const shouldOpen = this.shouldOpen(score, direction)
-    console.log('[AutoTrade] 检查开仓条件:', 'autoOpen=', autoOpen, 'shouldOpen=', shouldOpen, 'score=', score, 'direction=', direction)
+    console.log('[AutoTrade] 检查开仓条件:', 'autoOpen=', autoOpen, 'shouldOpen=', shouldOpen, 'score=', score, 'direction=', direction, '当前持仓:', state.currentPos)
 
     // 自动开仓
-    if (autoOpen && shouldOpen) {
+    if (autoOpen && shouldOpen && !state.currentPos) {
       state.lastSignalTime = now
       this.saveState(state)
       
@@ -5317,7 +5319,7 @@ const AutoTrade = {
         this.sendNotification(direction, score, entryPrice)
       }
     } else {
-      console.log('[AutoTrade] 不满足开仓条件，跳过。autoOpen:', autoOpen, 'shouldOpen:', shouldOpen)
+      console.log('[AutoTrade] 不满足开仓条件，跳过。autoOpen:', autoOpen, 'shouldOpen:', shouldOpen, '当前持仓:', state.currentPos)
     }
   },
 
