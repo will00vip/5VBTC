@@ -70,7 +70,7 @@ class EnhancedPushSystem {
     }
   }
   
-  // 检查是否可以推送 - 增强版（防止冲突信号）
+  // 检查是否可以推送 - 增强版（智能频率控制）
   canPush(priority, signalType, score) {
     const now = Date.now()
     const cooldown = this.pushCooldown[priority] * 60 * 1000
@@ -83,29 +83,50 @@ class EnhancedPushSystem {
       push.signalType === signalType
     )
     if (recentSameType.length > 0) {
-      console.log(`[推送] 频率控制：跳过 ${priority} ${signalType} 信号（相同类型冷却中）`)
-      return false
-    }
-    
-    // 2. 检查冲突信号（高分做多和做空不应同时推送）
-    // 如果当前信号是高分信号（>=70），检查是否有相反类型的高分信号在最近时间内
-    if (priority === '重要' || priority === '紧急') {
-      const oppositeType = signalType === 'long' ? 'short' : 'long'
-      const recentOppositeHighScore = this.pushHistory.filter(push => 
-        now - push.time < 30 * 60 * 1000 &&  // 30分钟内
-        (push.priority === '重要' || push.priority === '紧急') &&
-        push.signalType === oppositeType &&
-        Math.abs(push.score) >= 70  // 只检查高分信号
-      )
-      
-      if (recentOppositeHighScore.length > 0) {
-        console.log(`[推送] 冲突信号控制：跳过 ${priority} ${signalType} 信号（已有高分${oppositeType}信号在30分钟内）`)
+      // 如果当前信号分数高于之前的信号，允许推送
+      const highestPreviousScore = Math.max(...recentSameType.map(p => Math.abs(p.score)))
+      if (absScore <= highestPreviousScore) {
+        console.log(`[推送] 频率控制：跳过 ${priority} ${signalType} 信号（相同类型冷却中，分数未提高）`)
         return false
       }
     }
     
-    // 3. 额外逻辑：75分以上做多信号应该优先，避免被做空信号干扰
-    // 如果有75分以上做多信号在最近15分钟内，不推送任何做空信号
+    // 2. 检查冲突信号（做多和做空不应在短时间内同时推送）
+    const oppositeType = signalType === 'long' ? 'short' : 'long'
+    
+    // 检查30分钟内的任何相反方向信号
+    const recentOppositeSignals = this.pushHistory.filter(push => 
+      now - push.time < 30 * 60 * 1000 &&  // 30分钟内
+      push.signalType === oppositeType
+    )
+    
+    if (recentOppositeSignals.length > 0) {
+      // 找出最近的相反方向信号
+      const latestOppositeSignal = recentOppositeSignals.sort((a, b) => b.time - a.time)[0]
+      const oppositeScore = Math.abs(latestOppositeSignal.score)
+      
+      // 检查是否为变盘信号（通过分数判断，变盘信号通常分数较高）
+      const isReversalSignal = absScore >= 85
+      
+      // 如果是变盘信号，允许突破冲突限制
+      if (!isReversalSignal) {
+        // 如果当前信号分数不高于相反信号，不允许推送
+        if (absScore <= oppositeScore) {
+          console.log(`[推送] 冲突信号控制：跳过 ${priority} ${signalType} 信号（已有${oppositeType}信号在30分钟内）`)
+          return false
+        }
+        
+        // 如果当前信号分数高于相反信号，但相反信号是高分信号，需要更高的分数优势
+        if (oppositeScore >= 70 && absScore <= oppositeScore + 15) {
+          console.log(`[推送] 冲突信号控制：跳过 ${priority} ${signalType} 信号（已有高分${oppositeType}信号在30分钟内，分数优势不足）`)
+          return false
+        }
+      } else {
+        console.log(`[推送] 变盘信号：突破冲突限制，允许推送 ${priority} ${signalType} 信号`)
+      }
+    }
+    
+    // 3. 高分信号优先逻辑
     if (signalType === 'short') {
       const recentHighLong = this.pushHistory.filter(push => 
         now - push.time < 15 * 60 * 1000 &&  // 15分钟内
@@ -114,7 +135,43 @@ class EnhancedPushSystem {
       )
       
       if (recentHighLong.length > 0) {
-        console.log(`[推送] 高分做多优先：跳过做空信号（有${recentHighLong[0].score}分做多信号在15分钟内）`)
+        // 如果做空信号分数显著高于做多信号，允许推送
+        const highestLongScore = Math.max(...recentHighLong.map(p => p.score))
+        if (absScore <= highestLongScore + 10) {
+          console.log(`[推送] 高分做多优先：跳过做空信号（有${highestLongScore}分做多信号在15分钟内）`)
+          return false
+        }
+      }
+    }
+    
+    // 4. 新增：高分做空信号优先逻辑
+    if (signalType === 'long') {
+      const recentHighShort = this.pushHistory.filter(push => 
+        now - push.time < 15 * 60 * 1000 &&  // 15分钟内
+        push.signalType === 'short' &&
+        Math.abs(push.score) >= 75
+      )
+      
+      if (recentHighShort.length > 0) {
+        // 如果做多信号分数显著高于做空信号，允许推送
+        const highestShortScore = Math.max(...recentHighShort.map(p => Math.abs(p.score)))
+        if (absScore <= highestShortScore + 10) {
+          console.log(`[推送] 高分做空优先：跳过做多信号（有${highestShortScore}分做空信号在15分钟内）`)
+          return false
+        }
+      }
+    }
+    
+    // 4. 智能频率控制：根据分数动态调整冷却时间
+    if (absScore >= 90) {
+      // 90分以上的信号，冷却时间减半
+      const shortCooldown = cooldown / 2
+      const recentHighScore = this.pushHistory.filter(push => 
+        now - push.time < shortCooldown &&
+        Math.abs(p.score) >= 90
+      )
+      if (recentHighScore.length > 0) {
+        console.log(`[推送] 高分信号冷却：跳过 ${priority} ${signalType} 信号（90分以上信号冷却中）`)
         return false
       }
     }
@@ -197,13 +254,26 @@ class EnhancedPushSystem {
       const sl = (result.tradeLevels?.stopLoss || '--')?.toFixed?.(2) || '--'
       const tp1 = (result.tradeLevels?.takeProfits?.[0] || '--')?.toFixed?.(2) || '--'
       const tp2 = (result.tradeLevels?.takeProfits?.[1] || '--')?.toFixed?.(2) || '--'
+      const tp3 = (result.tradeLevels?.takeProfits?.[2] || '--')?.toFixed?.(2) || '--'
       
-      // 短信内容（包含优先级）
+      // 计算风险收益比
+      let riskReward = '--'
+      if (result.tradeLevels && result.tradeLevels.stopLoss && result.tradeLevels.takeProfits && result.tradeLevels.takeProfits[0]) {
+        const risk = Math.abs(entry - sl)
+        const reward = Math.abs(tp1 - entry)
+        if (risk > 0) {
+          riskReward = (reward / risk).toFixed(2)
+        }
+      }
+      
+      // 短信内容（包含优先级和更多信息）
       const smsMessage = `[${priority}]${directionText}${score}分
 价格:${price?.toFixed?.(2) || '--'}
 入场:${entry}
 止损:${sl}
-TP:${tp1}/${tp2}`
+止盈:${tp1}/${tp2}/${tp3}
+风险收益比:${riskReward}
+时间:${new Date().toLocaleString()}`
 
       await SMS.send({
         numbers: [SMS_CONFIG.phoneNumber],
@@ -447,10 +517,12 @@ async function _warmupBasicData() {
     const result = await window.app?.analyzeBTC?.(currentInterval)
     if (result) {
       updateIndicators(result)
+      // 使用calculateOverallScore计算分数
+      const score = calculateOverallScore(result)
       // 判断是否有插针信号
       const hasSignal = result.signalConfidence && result.signalConfidence !== 0
-      updateScoreDial(result.score || 0, hasSignal, result.trend, result)
-      console.log('[Data] 指标数据预热完成', hasSignal ? '有信号' : '无信号')
+      updateScoreDial(score, hasSignal, result.trend, result)
+      console.log('[Data] 指标数据预热完成', hasSignal ? '有信号' : '无信号', '分数:', score)
     }
     
     // 获取24H数据

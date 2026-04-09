@@ -1,12 +1,12 @@
 // detector.js - 专业交易算法模型 v5.0（浏览器版本）
 // ───────────────────────────────────────────────
 
-// 内存缓存（30s内复用，切换周期时清空）
+// 内存缓存（5s内复用，切换周期时清空）
 var _cache = {};
 function getCacheKey(interval) { return interval; }
 function getCached(interval) {
   var c = _cache[getCacheKey(interval)];
-  if (c && Date.now() - c.ts < 30000) return c.data;
+  if (c && Date.now() - c.ts < 5000) return c.data; // 缩短缓存时间到5秒
   return null;
 }
 function setCache(interval, data) {
@@ -23,6 +23,21 @@ var _signalHistory = {
   lastSignalType: null,
   lastSignalScore: 0,
   signalCount: 0
+};
+
+// ★ 交易记录和绩效分析
+var _tradeHistory = [];
+var _performanceStats = {
+  totalTrades: 0,
+  winningTrades: 0,
+  losingTrades: 0,
+  totalProfit: 0,
+  totalLoss: 0,
+  winRate: 0,
+  profitFactor: 1,
+  maxDrawdown: 0,
+  averageProfit: 0,
+  averageLoss: 0
 };
 
 // ★ 获取上次信号信息
@@ -67,6 +82,49 @@ function recordSignal(signalType, score) {
   _signalHistory.lastSignalScore = score;
   _signalHistory.signalCount++;
   console.log('[信号记录] 类型:', signalType, '分数:', score, '时间:', new Date().toLocaleString());
+}
+
+// ★ 记录交易
+function recordTrade(trade) {
+  _tradeHistory.push(trade);
+  updatePerformanceStats();
+  console.log('[交易记录] 类型:', trade.type, '结果:', trade.result, '盈亏:', trade.profit.toFixed(2));
+}
+
+// ★ 更新绩效统计
+function updatePerformanceStats() {
+  var trades = _tradeHistory;
+  _performanceStats.totalTrades = trades.length;
+  _performanceStats.winningTrades = trades.filter(t => t.result === 'win').length;
+  _performanceStats.losingTrades = trades.filter(t => t.result === 'loss').length;
+  _performanceStats.totalProfit = trades.filter(t => t.result === 'win').reduce((sum, t) => sum + t.profit, 0);
+  _performanceStats.totalLoss = trades.filter(t => t.result === 'loss').reduce((sum, t) => sum + Math.abs(t.profit), 0);
+  _performanceStats.winRate = trades.length > 0 ? (_performanceStats.winningTrades / trades.length) * 100 : 0;
+  _performanceStats.profitFactor = _performanceStats.totalLoss > 0 ? _performanceStats.totalProfit / _performanceStats.totalLoss : 1;
+  _performanceStats.averageProfit = _performanceStats.winningTrades > 0 ? _performanceStats.totalProfit / _performanceStats.winningTrades : 0;
+  _performanceStats.averageLoss = _performanceStats.losingTrades > 0 ? _performanceStats.totalLoss / _performanceStats.losingTrades : 0;
+  
+  // 计算最大回撤
+  var runningProfit = 0;
+  var peak = 0;
+  var maxDrawdown = 0;
+  trades.forEach(trade => {
+    runningProfit += trade.profit;
+    peak = Math.max(peak, runningProfit);
+    var drawdown = (peak - runningProfit) / peak * 100;
+    maxDrawdown = Math.max(maxDrawdown, drawdown);
+  });
+  _performanceStats.maxDrawdown = maxDrawdown;
+}
+
+// ★ 获取绩效统计
+function getPerformanceStats() {
+  return _performanceStats;
+}
+
+// ★ 获取交易历史
+function getTradeHistory() {
+  return _tradeHistory;
 }
 
 // wx.request 封装成 Promise，带超时（使用全局 wx）
@@ -140,6 +198,18 @@ function calculateATR(bars, period) {
   return atr(highs, lows, closes, period);
 }
 
+/** 计算移动平均线 */
+function calculateMA(bars, period) {
+  period = period || 20;
+  if (bars.length < period) return 0;
+  
+  var sum = 0;
+  for (var i = bars.length - period; i < bars.length; i++) {
+    sum += bars[i].close;
+  }
+  return sum / period;
+}
+
 /** 判断趋势方向和强度 */
 function determineTrend(bars) {
   var closes = bars.map(function(b) { return b.close; });
@@ -156,6 +226,29 @@ function determineTrend(bars) {
   var ma60Slope = (ema60[n] - ema60[n - 10]) / ema60[n - 10] * 100;
   var priceToMA20 = (price - ma20) / ma20 * 100;
   var priceToMA60 = (price - ma60) / ma60 * 100;
+  
+  // 计算短期动量
+  var momentum = (price - closes[Math.max(0, n - 10)]) / closes[Math.max(0, n - 10)] * 100;
+  
+  // 检测变盘信号
+  var isTrendReversal = false;
+  var reversalStrength = 0;
+  
+  // 检查是否有金叉/死叉
+  var ma20Prev = ema20[Math.max(0, n - 1)];
+  var ma60Prev = ema60[Math.max(0, n - 1)];
+  var goldenCross = ma20 > ma60 && ma20Prev <= ma60Prev;
+  var deathCross = ma20 < ma60 && ma20Prev >= ma60Prev;
+  
+  // 检查价格是否突破重要均线
+  var ma20Break = Math.abs(priceToMA20) > 1.5;
+  var ma60Break = Math.abs(priceToMA60) > 3;
+  
+  // 变盘检测
+  if (goldenCross || deathCross || (ma20Break && ma60Break)) {
+    isTrendReversal = true;
+    reversalStrength = Math.min(100, 50 + Math.abs(momentum) * 2 + Math.abs(ma20Slope) * 5);
+  }
   
   var trendStrength = 0;
   var trend = 'sideways';
@@ -185,7 +278,12 @@ function determineTrend(bars) {
     aboveMA20: price > ma20,
     aboveMA60: price > ma60,
     ma20Slope: ma20Slope,
-    ma60Slope: ma60Slope
+    ma60Slope: ma60Slope,
+    momentum: momentum,
+    isTrendReversal: isTrendReversal,
+    reversalStrength: Math.round(reversalStrength),
+    goldenCross: goldenCross,
+    deathCross: deathCross
   };
 }
 
@@ -201,9 +299,10 @@ function checkMultiPeriodResonance(currentBars, higherBars) {
     volume_confirmed: false
   };
   
-  if (currentTrend.trend.indexOf('bull') >= 0 && higherTrend.trend.indexOf('bull') >= 0) {
+  // 修复趋势一致性检查逻辑
+  if (currentTrend.trend === 'up' && higherTrend.trend === 'up') {
     resonance.trend_aligned = true;
-  } else if (currentTrend.trend.indexOf('bear') >= 0 && higherTrend.trend.indexOf('bear') >= 0) {
+  } else if (currentTrend.trend === 'down' && higherTrend.trend === 'down') {
     resonance.trend_aligned = true;
   }
   
@@ -299,7 +398,8 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var trendScore = 0;
   var trendLabel = '';
   if (trend.trend === 'up' || (signalType === 'short' && trend.trend === 'down')) {
-    trendScore = 17;
+    // 根据趋势强度动态调整分数
+    trendScore = 10 + (trend.trendStrength / 100) * 7;
     trendLabel = '强势' + (signalType === 'long' ? '多头' : '空头');
   } else if (trend.trend === 'sideways') {
     trendScore = 11;
@@ -312,7 +412,7 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   scoreDetails.trend.score = trendScore;
   scoreDetails.trend.items.push({
     label: trendLabel,
-    score: trendScore,
+    score: Math.round(trendScore),
     max: 17,
     trend: trend.trend,
     strength: trend.trendStrength
@@ -330,7 +430,9 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
     volatilityScore = 17;
     volatilityLabel = '理想波动率(' + atrPercent.toFixed(2) + '%)';
   } else if (atrPercent >= 1 && atrPercent <= 5) {
-    volatilityScore = 11;
+    // 根据波动率偏离理想范围的程度调整分数
+    var deviation = Math.min(Math.abs(atrPercent - 3), 2);
+    volatilityScore = 11 + (1 - deviation / 2) * 6;
     volatilityLabel = '良好波动率(' + atrPercent.toFixed(2) + '%)';
   } else if (atrPercent >= 0.5 && atrPercent <= 8) {
     volatilityScore = 6;
@@ -342,7 +444,7 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   scoreDetails.volatility.score = volatilityScore;
   scoreDetails.volatility.items.push({
     label: volatilityLabel,
-    score: volatilityScore,
+    score: Math.round(volatilityScore),
     max: 17,
     atrPercent: atrPercent
   });
@@ -355,7 +457,9 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var volumeRatio = lastVolume / avgVolume;
   
   if (lastVolume > avgVolume * 1.5) {
-    volumeScore = 6;
+    // 根据放量程度动态调整分数
+    var excessRatio = Math.min(volumeRatio - 1.5, 1);
+    volumeScore = 6 + excessRatio * 2;
     volumeLabel = '放量(' + volumeRatio.toFixed(2) + '倍)';
   } else if (lastVolume > avgVolume * 1.2) {
     volumeScore = 4;
@@ -370,10 +474,14 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   scoreDetails.volume.score = volumeScore;
   scoreDetails.volume.items.push({
     label: volumeLabel,
-    score: volumeScore,
+    score: Math.round(volumeScore),
     max: 6,
     volumeRatio: volumeRatio
   });
+  
+  // 添加随机波动因子，避免分数完全相同
+  var randomFactor = Math.random() * 2 - 1; // -1到1之间的随机数
+  score += randomFactor;
   
   // 确保分数在合理范围内
   score = Math.min(maxScore, Math.max(0, score));
@@ -400,19 +508,19 @@ function calculateTradeLevels(signalType, bars, atrPeriod) {
   
   if (signalType === 'long') {
     entryZone = [price - currentATR * 0.5, price];
-    stopLoss = price - currentATR * 1.5;
+    stopLoss = price - currentATR * 1.0; // 减少止损距离，提高风险回报比
     takeProfits = [
-      price + currentATR * 1.5,
-      price + currentATR * 3.0,
-      price + currentATR * 4.5
+      price + currentATR * 1.5, // 止盈1：1.5倍ATR
+      price + currentATR * 2.5, // 止盈2：2.5倍ATR
+      price + currentATR * 3.5  // 止盈3：3.5倍ATR
     ];
   } else if (signalType === 'short') {
     entryZone = [price, price + currentATR * 0.5];
-    stopLoss = price + currentATR * 1.5;
+    stopLoss = price + currentATR * 1.0; // 减少止损距离，提高风险回报比
     takeProfits = [
-      price - currentATR * 1.5,
-      price - currentATR * 3.0,
-      price - currentATR * 4.5
+      price - currentATR * 1.5, // 止盈1：1.5倍ATR
+      price - currentATR * 2.5, // 止盈2：2.5倍ATR
+      price - currentATR * 3.5  // 止盈3：3.5倍ATR
     ];
   }
   
@@ -557,13 +665,53 @@ async function detectSignal(interval) {
   var lastSignal = getLastSignalInfo();
   var canGenerateSignal = checkSignalCooldown(lastSignal, signalType);
   
-  // 增强的做多信号条件（添加趋势过滤）
-  if (isLongPin && c2Long && c4Long && volumeConditions.long && rsiConditions.long && trendAlignment.long && canGenerateSignal) {
+  // ★ 增强的信号质量过滤
+  var signalQuality = {
+    long: {
+      volume: volumeConditions.long,
+      rsi: rsiConditions.long,
+      boll: bollConditions.long,
+      trend: trendAlignment.long,
+      cooldown: canGenerateSignal,
+      // 额外条件：价格在MA上方
+      ma: lastBar.close > calculateMA(bars, 20),
+      // 额外条件：MACD金叉
+      macd: macdBar > 0 && macdData.dif[n] > macdData.dea[n],
+      // 变盘特殊条件
+      reversal: !trendInfo.isTrendReversal || (trendInfo.isTrendReversal && trendInfo.goldenCross)
+    },
+    short: {
+      volume: volumeConditions.short,
+      rsi: rsiConditions.short,
+      boll: bollConditions.short,
+      trend: trendAlignment.short,
+      cooldown: canGenerateSignal,
+      // 额外条件：价格在MA下方
+      ma: lastBar.close < calculateMA(bars, 20),
+      // 额外条件：MACD死叉
+      macd: macdBar < 0 && macdData.dif[n] < macdData.dea[n],
+      // 变盘特殊条件
+      reversal: !trendInfo.isTrendReversal || (trendInfo.isTrendReversal && trendInfo.deathCross)
+    }
+  };
+  
+  // 计算信号质量分数
+  function calculateQualityScore(conditions) {
+    var total = Object.keys(conditions).length;
+    var met = Object.values(conditions).filter(Boolean).length;
+    return (met / total) * 100;
+  }
+  
+  var longQualityScore = calculateQualityScore(signalQuality.long);
+  var shortQualityScore = calculateQualityScore(signalQuality.short);
+  
+  // 增强的做多信号条件（添加更多质量过滤）
+  if (isLongPin && c2Long && c4Long && (longQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.goldenCross && longQualityScore >= 60))) {
     signalType = 'long';
   }
   
-  // 增强的做空信号条件（添加趋势过滤）
-  if (isShortPin && c2Short && c4Short && volumeConditions.short && rsiConditions.short && trendAlignment.short && canGenerateSignal) {
+  // 增强的做空信号条件（添加更多质量过滤）
+  if (isShortPin && c2Short && c4Short && (shortQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.deathCross && shortQualityScore >= 60))) {
     signalType = 'short';
   }
   

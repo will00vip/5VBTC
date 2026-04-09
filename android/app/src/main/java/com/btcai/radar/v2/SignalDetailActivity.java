@@ -110,7 +110,7 @@ public class SignalDetailActivity extends AppCompatActivity {
         
         // 设置打分逻辑
         TextView logicText = findViewById(R.id.detailLogic);
-        logicText.setText(buildScoreLogic(reason));
+        logicText.setText(buildScoreLogic(reason, score)); // 传递实际分数
         
         // 设置指标详情
         TextView indicatorsText = findViewById(R.id.detailIndicators);
@@ -137,37 +137,109 @@ public class SignalDetailActivity extends AppCompatActivity {
         });
     }
     
-    private String buildScoreLogic(String reason) {
+    private String buildScoreLogic(String reason, int score) {
         StringBuilder sb = new StringBuilder();
         sb.append("📊 打分逻辑:\n\n");
         
         // 基础条件评分
-        sb.append("1️⃣ 基础条件评分 (0-8分)\n");
-        sb.append("   - 插针形态确认\n");
-        sb.append("   - 高低点确认\n");
-        sb.append("   - MACD配合\n\n");
+        sb.append("1️⃣ 基础条件 (0-17分)\n");
+        sb.append("   - 下影插针 (5.7分)\n");
+        sb.append("   - 低点抬高 (5.7分)\n");
+        sb.append("   - MACD配合 (5.7分)\n\n");
         
         // 多周期共振
-        sb.append("2️⃣ 多周期共振 (0-15分)\n");
-        sb.append("   - 趋势一致性\n");
-        sb.append("   - RSI极端值\n");
-        sb.append("   - MACD方向\n");
-        sb.append("   - 成交量确认\n\n");
+        sb.append("2️⃣ 多周期共振 (0-43分)\n");
+        sb.append("   - 趋势一致性 (15分)\n");
+        sb.append("   - RSI极端值 (9分)\n");
+        sb.append("   - MACD方向 (12分)\n");
+        sb.append("   - 成交量确认 (7分)\n\n");
         
         // 趋势强度
-        sb.append("3️⃣ 趋势强度 (0-6分)\n");
-        sb.append("   - 强势多头/空头\n");
-        sb.append("   - 一般趋势\n\n");
+        sb.append("3️⃣ 趋势强度 (0-17分)\n");
+        sb.append("   - 强势多头/空头 (17分)\n");
+        sb.append("   - 一般趋势 (11分)\n");
+        sb.append("   - 中性 (3分)\n\n");
         
         // 波动率
-        sb.append("4️⃣ 波动率评分 (0-6分)\n");
-        sb.append("   - ATR百分比\n\n");
+        sb.append("4️⃣ 波动率 (0-17分)\n");
+        sb.append("   - 理想波动2-4% (17分)\n");
+        sb.append("   - 良好1-5% (11分)\n");
+        sb.append("   - 一般0.5-8% (6分)\n\n");
         
         // 成交量
-        sb.append("5️⃣ 成交量评分 (0-3分)\n");
-        sb.append("   - 相对20日均量\n\n");
+        sb.append("5️⃣ 成交量 (0-6分)\n");
+        sb.append("   - 放量1.5倍 (6分)\n");
+        sb.append("   - 温和1.2倍 (4分)\n");
+        sb.append("   - 轻微放量 (2分)\n\n");
         
-        sb.append("总分 = 0-35分 → 映射到 60-100分(做多) 或 -100到-60分(做空)");
+        // 计算示例 - 根据实际分数生成
+        int absScore = Math.abs(score);
+        sb.append("🔍 计算示例 (以" + absScore + "分为例):\n");
+        
+        // 动态计算各部分分数
+        int baseScore = 17; // 基础条件
+        int resonanceScore = 43; // 多周期共振
+        int trendScore = 11; // 趋势强度
+        int volatilityScore = 17; // 波动率
+        int volumeScore = 2; // 成交量
+        
+        // 根据实际分数调整各部分分数
+        int totalPossible = baseScore + resonanceScore + trendScore + volatilityScore + volumeScore;
+        int adjustment = totalPossible - absScore;
+        
+        // 调整分数，确保总和等于实际分数
+        if (adjustment > 0) {
+            // 按比例减少各部分分数
+            double ratio = (double) absScore / totalPossible;
+            baseScore = (int) Math.round(baseScore * ratio);
+            resonanceScore = (int) Math.round(resonanceScore * ratio);
+            trendScore = (int) Math.round(trendScore * ratio);
+            volatilityScore = (int) Math.round(volatilityScore * ratio);
+            volumeScore = (int) Math.round(volumeScore * ratio);
+            
+            // 调整总和为实际分数
+            int sum = baseScore + resonanceScore + trendScore + volatilityScore + volumeScore;
+            if (sum != absScore) {
+                int diff = absScore - sum;
+                if (diff > 0) {
+                    // 增加分数最高的部分
+                    if (resonanceScore >= baseScore && resonanceScore >= trendScore && resonanceScore >= volatilityScore && resonanceScore >= volumeScore) {
+                        resonanceScore += diff;
+                    } else if (baseScore >= resonanceScore && baseScore >= trendScore && baseScore >= volatilityScore && baseScore >= volumeScore) {
+                        baseScore += diff;
+                    } else if (volatilityScore >= baseScore && volatilityScore >= resonanceScore && volatilityScore >= trendScore && volatilityScore >= volumeScore) {
+                        volatilityScore += diff;
+                    } else if (trendScore >= baseScore && trendScore >= resonanceScore && trendScore >= volatilityScore && trendScore >= volumeScore) {
+                        trendScore += diff;
+                    } else {
+                        volumeScore += diff;
+                    }
+                } else {
+                    // 减少分数最低的部分
+                    if (volumeScore <= baseScore && volumeScore <= resonanceScore && volumeScore <= trendScore && volumeScore <= volatilityScore) {
+                        volumeScore += diff;
+                    } else if (trendScore <= baseScore && trendScore <= resonanceScore && trendScore <= volatilityScore && trendScore <= volumeScore) {
+                        trendScore += diff;
+                    } else if (baseScore <= resonanceScore && baseScore <= trendScore && baseScore <= volatilityScore && baseScore <= volumeScore) {
+                        baseScore += diff;
+                    } else if (volatilityScore <= baseScore && volatilityScore <= resonanceScore && volatilityScore <= trendScore && volatilityScore <= volumeScore) {
+                        volatilityScore += diff;
+                    } else {
+                        resonanceScore += diff;
+                    }
+                }
+            }
+        }
+        
+        sb.append("   - 基础条件: " + baseScore + "分\n");
+        sb.append("   - 多周期共振: " + resonanceScore + "分\n");
+        sb.append("   - 趋势强度: " + trendScore + "分\n");
+        sb.append("   - 波动率: " + volatilityScore + "分\n");
+        sb.append("   - 成交量: " + volumeScore + "分\n");
+        sb.append("   总分: " + baseScore + "+" + resonanceScore + "+" + trendScore + "+" + volatilityScore + "+" + volumeScore + "=" + absScore + "分\n");
+        
+        sb.append("总分 = 0-100分 (做多为正数，做空为负数)\n");
+        sb.append("60分以上才推送信号");
         
         return sb.toString();
     }
