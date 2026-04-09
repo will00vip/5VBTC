@@ -1135,6 +1135,9 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
   const circumference = 2 * Math.PI * 90
   circle.style.strokeDasharray = `${circumference} ${circumference}`
   
+  // 检查是否是0-100的百分比分数（无信号时的技术指标评分）
+  const isPercentageScore = score >= 0 && score <= 100
+  
   // 获取实际信号分数（用于判断）
   const signalScore = score // 使用传入的score参数
   const absSignalScore = Math.abs(signalScore)
@@ -1171,7 +1174,7 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     }
     
   } else {
-    // ★ 60分以下：显示震荡/观望状态
+    // ★ 无信号或信号强度不足：显示震荡/观望状态
     
     // 根据趋势显示不同状态
     let statusLabel = '观望'
