@@ -1136,7 +1136,7 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
   circle.style.strokeDasharray = `${circumference} ${circumference}`
   
   // 获取实际信号分数（用于判断）
-  const signalScore = signalResult ? signalResult.signalConfidence || 0 : 0
+  const signalScore = score // 使用传入的score参数
   const absSignalScore = Math.abs(signalScore)
   
   // ★ 60分以上才显示信号
