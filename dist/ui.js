@@ -3971,6 +3971,17 @@ function toggleTradeSession() {
       window.SimTrader.PARAMS.LEVERAGE = leverage
     }
     
+    // ★ 自动开启自动交易
+    const autoOpenCheckbox = document.getElementById('atAutoOpen')
+    if (autoOpenCheckbox) {
+      autoOpenCheckbox.checked = true
+      // 保存设置
+      const settings = JSON.parse(localStorage.getItem('autotrade_settings') || '{}')
+      settings.autoOpen = true
+      localStorage.setItem('autotrade_settings', JSON.stringify(settings))
+      console.log('[Trade] 自动交易已开启')
+    }
+    
     console.log(`[Trade] 会话开始 - 余额: ${newBalance}U, 杠杆: ${leverage}×`)
   } else {
     // 停止会话（不重置数据，累计统计）
@@ -5068,8 +5079,12 @@ const AutoTrade = {
 
   // 处理信号
   onSignal(score, direction, entryPrice, sl, tp1, tp2) {
+    console.log('[AutoTrade] 收到信号:', direction, score, '价格:', entryPrice)
+    
     const state = this.getState()
-    const autoOpen = document.getElementById('atAutoOpen')?.checked
+    // ★ 默认开启自动交易（如果用户没有明确关闭）
+    const autoOpenCheckbox = document.getElementById('atAutoOpen')
+    const autoOpen = autoOpenCheckbox ? autoOpenCheckbox.checked : true
     const notify = document.getElementById('atNotify')?.checked
 
     // 检查是否已有持仓
@@ -5081,18 +5096,27 @@ const AutoTrade = {
     // 检查信号冷却（5分钟）
     const now = Date.now()
     if (now - state.lastSignalTime < 5 * 60 * 1000) {
-      console.log('[AutoTrade] 信号冷却中')
+      console.log('[AutoTrade] 信号冷却中，剩余:', Math.round((5 * 60 * 1000 - (now - state.lastSignalTime)) / 1000), '秒')
       return
     }
 
+    // 检查是否应该开仓
+    const shouldOpen = this.shouldOpen(score, direction)
+    console.log('[AutoTrade] 检查开仓条件:', 'autoOpen=', autoOpen, 'shouldOpen=', shouldOpen, 'score=', score, 'direction=', direction)
+
     // 自动开仓
-    if (autoOpen && this.shouldOpen(score, direction)) {
+    if (shouldOpen) {
       state.lastSignalTime = now
+      this.saveState(state)
+      
+      console.log('[AutoTrade] 准备开仓:', direction, entryPrice, sl, tp1, tp2)
       this.openPosition(direction, entryPrice, sl, tp1, tp2, score)
 
       if (notify) {
         this.sendNotification(direction, score, entryPrice)
       }
+    } else {
+      console.log('[AutoTrade] 不满足开仓条件，跳过')
     }
   },
 

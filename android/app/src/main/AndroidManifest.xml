@@ -73,6 +73,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- ★ 服务保活接收器 -->
+        <receiver
+            android:name="com.btcai.radar.v2.ServiceRestartReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.REBOOT" />
+                <action android:name="com.btcai.radar.RESTART_SERVICE" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
     <!-- Permissions -->

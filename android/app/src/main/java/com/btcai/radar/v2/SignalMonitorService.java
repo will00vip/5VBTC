@@ -11,6 +11,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
@@ -35,13 +36,16 @@ public class SignalMonitorService extends Service {
     public static final int NOTIFICATION_ID = 1001;
     public static final long CHECK_INTERVAL = 30 * 1000; // 30秒检查一次（更及时）
     private static final long COOL_DOWN = 3 * 60 * 1000; // 3分钟通知冷却
+    private static final long HEARTBEAT_INTERVAL = 60 * 1000; // 1分钟心跳
 
     private ExecutorService executor;
     private Handler handler;
     private Runnable checkRunnable;
+    private Runnable heartbeatRunnable;
     private SharedPreferences prefs;
     private long lastNotifyTime = 0;
     private int lastSignalType = 0; // 0=无, 1=做多, 2=做空
+    private PowerManager.WakeLock wakeLock;
 
     @Override
     public void onCreate() {
@@ -50,6 +54,13 @@ public class SignalMonitorService extends Service {
         handler = new Handler(Looper.getMainLooper());
         prefs = getSharedPreferences("btc_radar", MODE_PRIVATE);
         createNotificationChannel();
+        
+        // ★ 获取WakeLock防止CPU休眠
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (powerManager != null) {
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "BTC:SignalMonitor");
+            wakeLock.acquire(10 * 60 * 1000L); // 10分钟
+        }
     }
 
     @Override
@@ -62,8 +73,36 @@ public class SignalMonitorService extends Service {
 
         // 开始定期检查
         startPeriodicCheck();
+        
+        // ★ 开始心跳保活
+        startHeartbeat();
 
         return START_STICKY;
+    }
+    
+    // ★ 心跳保活机制
+    private void startHeartbeat() {
+        heartbeatRunnable = new Runnable() {
+            @Override
+            public void run() {
+                Log.d(TAG, "💓 心跳检测 - 服务运行中");
+                
+                // 刷新WakeLock
+                if (wakeLock != null && !wakeLock.isHeld()) {
+                    wakeLock.acquire(10 * 60 * 1000L);
+                }
+                
+                // 刷新前台通知
+                Notification notification = createForegroundNotification();
+                NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (manager != null) {
+                    manager.notify(NOTIFICATION_ID, notification);
+                }
+                
+                handler.postDelayed(this, HEARTBEAT_INTERVAL);
+            }
+        };
+        handler.post(heartbeatRunnable);
     }
 
     private void createNotificationChannel() {
@@ -157,6 +196,11 @@ public class SignalMonitorService extends Service {
                                 lastNotifyTime = now;
                                 showSignalNotification(direction, score, result.reason, 
                                     result.price, result.stopLoss, result.takeProfit1, result.takeProfit2, result.leverage);
+                                
+                                // ★ 触发自动交易
+                                String tradeDirection = score >= 60 ? "long" : "short";
+                                triggerAutoTrade(tradeDirection, score, result.price, 
+                                    result.stopLoss, result.takeProfit1, result.takeProfit2);
                             }
                         }
                     }
@@ -537,16 +581,41 @@ public class SignalMonitorService extends Service {
         Log.d(TAG, "Signal notification: " + direction + " " + scoreDisplay);
     }
 
+    // ★ 触发自动交易
+    private void triggerAutoTrade(String direction, int score, double price, 
+                                  double stopLoss, double takeProfit1, double takeProfit2) {
+        try {
+            MainActivity mainActivity = MainActivity.getInstance();
+            if (mainActivity != null) {
+                mainActivity.triggerAutoTrade(direction, score, price, stopLoss, takeProfit1, takeProfit2);
+                Log.d(TAG, "✅ 自动交易已触发: " + direction + " " + score + "分");
+            } else {
+                Log.w(TAG, "⚠️ MainActivity未运行，无法触发自动交易");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ 触发自动交易失败: " + e.getMessage());
+        }
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (handler != null && checkRunnable != null) {
-            handler.removeCallbacks(checkRunnable);
+        if (handler != null) {
+            if (checkRunnable != null) handler.removeCallbacks(checkRunnable);
+            if (heartbeatRunnable != null) handler.removeCallbacks(heartbeatRunnable);
         }
         if (executor != null) {
             executor.shutdown();
         }
+        // ★ 释放WakeLock
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+        }
         Log.d(TAG, "SignalMonitorService destroyed");
+        
+        // ★ 服务被杀死后自动重启
+        Intent restartIntent = new Intent(this, SignalMonitorService.class);
+        startService(restartIntent);
     }
 
     @Nullable

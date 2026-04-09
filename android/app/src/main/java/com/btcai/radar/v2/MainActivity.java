@@ -165,4 +165,48 @@ public class MainActivity extends BridgeActivity {
             notificationManager.notify((int) System.currentTimeMillis(), builder.build());
         }
     }
+    
+    // ★ 触发前端自动交易（通过WebView调用JavaScript）
+    public void triggerAutoTrade(String direction, int score, double price, double stopLoss, double takeProfit1, double takeProfit2) {
+        try {
+            // 获取WebView
+            WebView webView = findViewById(android.R.id.content).findViewWithTag("mainWebView");
+            if (webView == null) {
+                // Capacitor 方式获取 WebView
+                java.lang.reflect.Field bridgeField = BridgeActivity.class.getDeclaredField("bridge");
+                bridgeField.setAccessible(true);
+                Object bridge = bridgeField.get(this);
+                if (bridge != null) {
+                    java.lang.reflect.Field webViewField = bridge.getClass().getDeclaredField("webView");
+                    webViewField.setAccessible(true);
+                    webView = (WebView) webViewField.get(bridge);
+                }
+            }
+            
+            if (webView != null) {
+                // 构建JavaScript代码触发自动交易
+                String jsCode = String.format(
+                    "if (typeof AutoTrade !== 'undefined') { " +
+                    "   AutoTrade.onSignal(%d, '%s', %.2f, %.2f, %.2f, %.2f); " +
+                    "   console.log('[Android] 自动交易已触发: %s %d分'); " +
+                    "} else { " +
+                    "   console.log('[Android] AutoTrade未定义'); " +
+                    "}",
+                    score, direction, price, stopLoss, takeProfit1, takeProfit2,
+                    direction, score
+                );
+                
+                final WebView finalWebView = webView;
+                runOnUiThread(() -> {
+                    finalWebView.evaluateJavascript(jsCode, null);
+                });
+                
+                Log.d("MainActivity", "✅ 自动交易已触发: " + direction + " " + score + "分");
+            } else {
+                Log.w("MainActivity", "⚠️ WebView未找到，无法触发自动交易");
+            }
+        } catch (Exception e) {
+            Log.e("MainActivity", "❌ 触发自动交易失败: " + e.getMessage());
+        }
+    }
 }
