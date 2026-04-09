@@ -448,7 +448,7 @@ async function _warmupBasicData() {
       updateIndicators(result)
       // 判断是否有插针信号
       const hasSignal = result.signalConfidence && result.signalConfidence !== 0
-      updateScoreDial(result.score || 0, hasSignal, result.trend)
+      updateScoreDial(result.score || 0, hasSignal, result.trend, result)
       console.log('[Data] 指标数据预热完成', hasSignal ? '有信号' : '无信号')
     }
     
@@ -713,7 +713,7 @@ function processSignalResult(result) {
     const cache = getValidSignalCache()
     const hasSignal = (result.signalConfidence && result.signalConfidence !== 0) || !!cache
     if (window.updateScoreDial) {
-      window.updateScoreDial(score, hasSignal, result.trend)  // 有信号显示分数，无信号显示...
+      window.updateScoreDial(score, hasSignal, result.trend, result)
     }
   } catch(e) { console.warn('[score]', e) }
 
@@ -1047,68 +1047,90 @@ function calculateOverallScore(result) {
 
 
 
-// 更新评分圆盘UI - V6最终版
+// 更新评分圆盘UI - V7最终版
 // 规则：
-// - 有插针信号：正数做多(60-100)绿 / 负数做空(-100到-60)红
-// - 无插针信号：技术指标打分(0-50)，根据趋势显示正负
-function updateScoreDial(score, hasSignal = false, trend = 'neutral') {
+// - 60分以上：显示做多/做空信号 + 倒计时
+// - 60分以下：显示震荡/观望状态，不显示具体分数
+function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResult = null) {
   const circle = document.getElementById('scoreCircle')
   const scoreText = document.getElementById('dialScore')
+  const statusText = document.getElementById('statusText')
   
   if (!circle || !scoreText) return
   
-  let displayScore = score
-  let isLong = score > 0  // 正数做多，负数做空
+  // 获取实际信号分数（用于判断）
+  const signalScore = signalResult ? signalResult.signalConfidence || 0 : 0
+  const absSignalScore = Math.abs(signalScore)
   
-  // 无插针信号时，根据趋势调整分数符号
-  if (!hasSignal) {
-    if (trend === 'strong_bull' || trend === 'bull') {
-      displayScore = Math.abs(score) // 多头趋势显示正数
-      isLong = true
-    } else if (trend === 'strong_bear' || trend === 'bear') {
-      displayScore = -Math.abs(score) // 空头趋势显示负数
-      isLong = false
-    }
-  }
+  // ★ 60分以上才显示信号
+  const hasStrongSignal = hasSignal && absSignalScore >= 60
   
-  const absScore = Math.abs(displayScore)
-  
-  // 计算圆环进度（0-100范围）
-  const percentage = absScore / 100
-  const circumference = 2 * Math.PI * 90
-  const offset = circumference - percentage * circumference
-  circle.style.strokeDashoffset = offset
-  
-  if (hasSignal) {
-    // 有插针信号时：正负数+对应颜色
+  if (hasStrongSignal) {
+    // ★ 60分以上：显示信号和倒计时
+    const isLong = signalScore > 0
+    const displayScore = signalScore
+    
+    // 计算圆环进度
+    const percentage = absSignalScore / 100
+    const circumference = 2 * Math.PI * 90
+    const offset = circumference - percentage * circumference
+    circle.style.strokeDashoffset = offset
+    
     if (isLong) {
       circle.style.stroke = '#10b981'  // 绿色做多
       scoreText.style.color = '#10b981'
-      scoreText.textContent = '+' + score
+      scoreText.textContent = '+' + signalScore
+      if (statusText) statusText.textContent = `做多信号 ${signalScore}分 🐂`
     } else {
       circle.style.stroke = '#ef4444'  // 红色做空
       scoreText.style.color = '#ef4444'
-      scoreText.textContent = score  // 负数如 -75
-    }
-    updateScoreBarIndicator(score, true, isLong ? 'long' : 'short')
-  } else {
-    // 无插针信号：技术指标打分(0-50)，根据趋势显示颜色
-    if (isLong) {
-      circle.style.stroke = '#10b981'  // 绿色做多
-      scoreText.style.color = '#10b981'
-      scoreText.textContent = '+' + Math.abs(displayScore)
-    } else if (displayScore < 0) {
-      circle.style.stroke = '#ef4444'  // 红色做空
-      scoreText.style.color = '#ef4444'
-      scoreText.textContent = displayScore
-    } else {
-      circle.style.stroke = '#3b82f6'  // 蓝色震荡
-      scoreText.style.color = '#3b82f6'
-      scoreText.textContent = displayScore
+      scoreText.textContent = signalScore
+      if (statusText) statusText.textContent = `做空信号 ${signalScore}分 🐻`
     }
     
-    // 进度条颜色
-    updateScoreBarIndicator(displayScore, false, isLong ? 'long' : displayScore < 0 ? 'short' : 'neutral')
+    updateScoreBarIndicator(signalScore, true, isLong ? 'long' : 'short')
+    
+    // 显示倒计时（如果有）
+    if (window.showSignalCountdown) {
+      window.showSignalCountdown(signalScore)
+    }
+    
+  } else {
+    // ★ 60分以下：显示震荡/观望状态
+    const circumference = 2 * Math.PI * 90
+    circle.style.strokeDashoffset = circumference * 0.5  // 居中
+    circle.style.stroke = '#6b7280'  // 灰色
+    scoreText.style.color = '#9ca3af'
+    
+    // 根据趋势显示不同状态
+    let statusLabel = '观望'
+    let statusIcon = '⏳'
+    
+    if (trend === 'strong_bull' || trend === 'bull') {
+      statusLabel = '偏多观望'
+      statusIcon = '📈'
+      circle.style.stroke = '#10b981'
+      scoreText.style.color = '#10b981'
+    } else if (trend === 'strong_bear' || trend === 'bear') {
+      statusLabel = '偏空观望'
+      statusIcon = '📉'
+      circle.style.stroke = '#ef4444'
+      scoreText.style.color = '#ef4444'
+    } else if (trend === 'sideways') {
+      statusLabel = '震荡整理'
+      statusIcon = '↔️'
+      circle.style.stroke = '#f59e0b'
+      scoreText.style.color = '#f59e0b'
+    }
+    
+    scoreText.textContent = statusIcon
+    if (statusText) statusText.textContent = statusLabel + ' - 等待高质信号'
+    
+    // 隐藏倒计时
+    const countdownEl = document.getElementById('signalCountdown')
+    if (countdownEl) countdownEl.style.display = 'none'
+    
+    updateScoreBarIndicator(0, false, 'neutral')
   }
 }
 
@@ -2189,7 +2211,7 @@ function generateSignalAnalysis(result) {
   // 更新评分圆盘
   const hasSignal = result.signalConfidence && result.signalConfidence !== 0
   if (window.updateScoreDial) {
-    window.updateScoreDial(percentScore, hasSignal, result.trend)
+    window.updateScoreDial(percentScore, hasSignal, result.trend, result)
   }
 
   // 生成分析项
@@ -3944,7 +3966,7 @@ function toggleTradeSession() {
   
   if (!tradeSessionActive) {
     // 开始新会话
-    const newBalance = 1000 // 默认1000U
+    const newBalance = 1000 // ★ 默认1000U
     const leverage = 30 // 默认30倍杠杆
     
     // 保存设置
@@ -4969,8 +4991,8 @@ const AutoTrade = {
     const saved = localStorage.getItem(this.STORAGE_KEY)
     if (saved) return JSON.parse(saved)
     return {
-      initBalance: 100,
-      balance: 100,
+      initBalance: 1000,  // ★ 默认1000U
+      balance: 1000,
       currentPos: null,
       trades: [],
       lastSignalTime: 0,
@@ -4996,13 +5018,46 @@ const AutoTrade = {
     this.render()
   },
 
-  // 开仓
+  // 开仓 - 智能仓位管理
   openPosition(direction, entryPrice, sl, tp1, tp2, score) {
     const state = this.getState()
     if (state.currentPos) return false // 已有持仓
 
-    const leverage = parseInt(document.getElementById('atLeverage')?.value) || 20
-    const posSize = state.balance * 0.5 * leverage // 50%仓位
+    // ★ 根据信号分数动态选择杠杆 (30-50倍)
+    const absScore = Math.abs(score)
+    let leverage = 30 // 基础杠杆
+    if (absScore >= 85) {
+      leverage = 50 // 85分以上：50倍
+    } else if (absScore >= 75) {
+      leverage = 40 // 75-84分：40倍
+    } else if (absScore >= 65) {
+      leverage = 35 // 65-74分：35倍
+    } else {
+      leverage = 30 // 60-64分：30倍
+    }
+
+    // ★ 计算风险比例 (止损距离)
+    const riskPercent = Math.abs(entryPrice - sl) / entryPrice
+    
+    // ★ 动态仓位：根据信号质量和风险调整
+    // 高分信号 + 小止损 = 大仓位
+    // 基础仓位：余额的 10-30%
+    let positionPercent = 0.15 // 默认15%仓位
+    
+    if (absScore >= 85 && riskPercent < 0.01) {
+      positionPercent = 0.30 // 85分以上 + 止损<1% = 30%仓位
+    } else if (absScore >= 75 && riskPercent < 0.015) {
+      positionPercent = 0.25 // 75分以上 + 止损<1.5% = 25%仓位
+    } else if (absScore >= 65) {
+      positionPercent = 0.20 // 65分以上 = 20%仓位
+    } else {
+      positionPercent = 0.15 // 60分以上 = 15%仓位
+    }
+    
+    const margin = state.balance * positionPercent // 保证金
+    const posSize = margin * leverage // 名义仓位
+
+    console.log(`[AutoTrade] 开仓参数: 分数=${absScore}, 杠杆=${leverage}x, 仓位=${(positionPercent*100).toFixed(0)}%, 止损=${(riskPercent*100).toFixed(2)}%`)
 
     state.currentPos = {
       id: Date.now().toString(),
@@ -5013,13 +5068,33 @@ const AutoTrade = {
       tp2,
       leverage,
       size: posSize,
+      margin, // 实际保证金
       score,
       openTime: new Date().toLocaleString('zh-CN'),
     }
 
     this.saveState(state)
     this.render()
+    
+    // 显示开仓通知
+    this.showTradeNotification('开仓', direction, entryPrice, leverage, margin, score)
+    
     return true
+  },
+  
+  // ★ 显示交易通知
+  showTradeNotification(type, direction, price, leverage, margin, score) {
+    const directionText = direction === 'long' ? '做多' : '做空'
+    const emoji = direction === 'long' ? '🟢' : '🔴'
+    
+    console.log(`[AutoTrade] ${emoji} ${type}: ${directionText} @ $${price.toFixed(2)}, 杠杆=${leverage}x, 保证金=$${margin.toFixed(2)}`)
+    
+    // 如果Android接口可用，发送通知
+    if (typeof Android !== 'undefined' && Android.showNotification) {
+      const title = `${emoji} 自动${type}: ${directionText}`
+      const body = `价格: $${price.toFixed(2)} | 杠杆: ${leverage}x | 保证金: $${margin.toFixed(2)}U | 信号: ${Math.abs(score)}分`
+      Android.showNotification(title, body)
+    }
   },
 
   // 平仓
@@ -5074,7 +5149,53 @@ const AutoTrade = {
 
     this.saveState(state)
     this.render()
+    
+    // ★ 显示平仓通知
+    const pnlEmoji = pnl >= 0 ? '✅' : '❌'
+    const pnlText = pnl >= 0 ? `+${pnl.toFixed(2)}U` : `${pnl.toFixed(2)}U`
+    console.log(`[AutoTrade] ${pnlEmoji} 平仓: ${exitReason}, 盈亏=${pnlText}`)
+    
+    if (typeof Android !== 'undefined' && Android.showNotification) {
+      const directionText = isLong ? '做多' : '做空'
+      const title = `${pnlEmoji} 自动平仓: ${directionText} ${exitReason}`
+      const body = `盈亏: ${pnlText} | 余额: $${state.balance.toFixed(2)}U`
+      Android.showNotification(title, body)
+    }
+    
+    // ★ 统计胜率
+    this.updateStats()
+    
     return true
+  },
+  
+  // ★ 更新统计数据
+  updateStats() {
+    const state = this.getState()
+    const trades = state.trades || []
+    
+    if (trades.length === 0) return
+    
+    const totalTrades = trades.length
+    const winTrades = trades.filter(t => t.pnl > 0).length
+    const lossTrades = trades.filter(t => t.pnl < 0).length
+    const winRate = totalTrades > 0 ? (winTrades / totalTrades * 100).toFixed(1) : 0
+    
+    const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0)
+    const avgPnl = totalTrades > 0 ? (totalPnl / totalTrades).toFixed(2) : 0
+    
+    console.log(`[AutoTrade] 统计: 总交易=${totalTrades}, 胜率=${winRate}%, 总盈亏=${totalPnl.toFixed(2)}U, 平均=${avgPnl}U`)
+    
+    // 保存统计数据
+    const stats = {
+      totalTrades,
+      winTrades,
+      lossTrades,
+      winRate: parseFloat(winRate),
+      totalPnl: parseFloat(totalPnl.toFixed(2)),
+      avgPnl: parseFloat(avgPnl),
+      lastUpdate: new Date().toLocaleString('zh-CN')
+    }
+    localStorage.setItem('autotrade_stats', JSON.stringify(stats))
   },
 
   // 处理信号
