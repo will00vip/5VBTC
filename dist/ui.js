@@ -1157,7 +1157,7 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     } else {
       circle.style.stroke = '#ef4444'  // 红色做空
       scoreText.style.color = '#ef4444'
-      scoreText.textContent = signalScore
+      scoreText.textContent = signalScore // 已经是负数，直接显示
       if (statusText) statusText.textContent = `做空信号 ${signalScore}分 🐻`
     }
     
@@ -1171,39 +1171,46 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
   } else {
     // ★ 60分以下：显示震荡/观望状态
     const circumference = 2 * Math.PI * 90
-    circle.style.strokeDashoffset = circumference * 0.5  // 居中
-    circle.style.stroke = '#6b7280'  // 灰色
-    scoreText.style.color = '#9ca3af'
     
     // 根据趋势显示不同状态
     let statusLabel = '观望'
-    let statusIcon = '⏳'
+    let statusColor = '#6b7280'
+    let displayText = '观望'
+    let indicatorValue = 0
     
     if (trend === 'up') {
       statusLabel = '偏多观望'
-      statusIcon = '📈'
-      circle.style.stroke = '#10b981'
-      scoreText.style.color = '#10b981'
+      statusColor = '#10b981'
+      displayText = '偏多'
+      indicatorValue = 30
     } else if (trend === 'down') {
       statusLabel = '偏空观望'
-      statusIcon = '📉'
-      circle.style.stroke = '#ef4444'
-      scoreText.style.color = '#ef4444'
+      statusColor = '#ef4444'
+      displayText = '偏空'
+      indicatorValue = -30
     } else if (trend === 'sideways') {
       statusLabel = '震荡整理'
-      statusIcon = '↔️'
-      circle.style.stroke = '#f59e0b'
-      scoreText.style.color = '#f59e0b'
+      statusColor = '#f59e0b'
+      displayText = '震荡'
+      indicatorValue = 0
     }
     
-    scoreText.textContent = statusIcon
+    // 计算圆环进度
+    const percentage = 0.5 // 50% 圆环
+    circle.style.strokeDashoffset = circumference - percentage * circumference
+    circle.style.stroke = statusColor
+    scoreText.style.color = statusColor
+    
+    // 显示状态文本而不是分数
+    scoreText.textContent = displayText
     if (statusText) statusText.textContent = statusLabel + ' - 等待高质信号'
     
     // 隐藏倒计时
     const countdownEl = document.getElementById('signalCountdown')
     if (countdownEl) countdownEl.style.display = 'none'
     
-    updateScoreBarIndicator(0, false, 'neutral')
+    // 更新指示器
+    updateScoreBarIndicator(indicatorValue, false, trend)
   }
 }
 
@@ -5299,7 +5306,7 @@ const AutoTrade = {
     console.log('[AutoTrade] 检查开仓条件:', 'autoOpen=', autoOpen, 'shouldOpen=', shouldOpen, 'score=', score, 'direction=', direction)
 
     // 自动开仓
-    if (shouldOpen) {
+    if (autoOpen && shouldOpen) {
       state.lastSignalTime = now
       this.saveState(state)
       
@@ -5310,7 +5317,7 @@ const AutoTrade = {
         this.sendNotification(direction, score, entryPrice)
       }
     } else {
-      console.log('[AutoTrade] 不满足开仓条件，跳过')
+      console.log('[AutoTrade] 不满足开仓条件，跳过。autoOpen:', autoOpen, 'shouldOpen:', shouldOpen)
     }
   },
 
@@ -5320,7 +5327,8 @@ const AutoTrade = {
     const shortThreshold = parseInt(document.getElementById('atShortThreshold')?.value) || -60
 
     if (direction === 'long' && score >= longThreshold) return true
-    if (direction === 'short' && score <= shortThreshold) return true
+    // 对于做空信号，使用绝对值比较
+    if (direction === 'short' && Math.abs(score) >= Math.abs(shortThreshold)) return true
     return false
   },
 

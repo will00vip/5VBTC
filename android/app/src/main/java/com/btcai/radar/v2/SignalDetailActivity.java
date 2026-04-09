@@ -172,9 +172,10 @@ public class SignalDetailActivity extends AppCompatActivity {
         sb.append("   - 温和1.2倍 (4分)\n");
         sb.append("   - 轻微放量 (2分)\n\n");
         
-        // 计算示例 - 根据实际分数生成
+        // 真实评分明细
         int absScore = Math.abs(score);
-        sb.append("🔍 计算示例 (以" + absScore + "分为例):\n");
+        String scorePrefix = score < 0 ? "-" : "";
+        sb.append("🔍 评分明细 (" + scorePrefix + absScore + "分):\n");
         
         // 动态计算各部分分数
         int baseScore = 17; // 基础条件
