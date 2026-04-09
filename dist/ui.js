@@ -144,14 +144,15 @@ class EnhancedPushSystem {
     if (absScore >= 85) priority = '紧急'
     else if (absScore >= 70) priority = '重要'
     else if (absScore >= 60) priority = '普通'
+    else return // 60分以下不推送
     
     // 检查频率控制
     let signalType = result.type
     // 无信号时，根据趋势设置signalType
     if (!signalType) {
-      if (result.trend === 'strong_bull' || result.trend === 'bull') {
+      if (result.trend === 'up') {
         signalType = 'bull_trend'
-      } else if (result.trend === 'strong_bear' || result.trend === 'bear') {
+      } else if (result.trend === 'down') {
         signalType = 'bear_trend'
       } else {
         signalType = 'neutral_trend'
@@ -972,12 +973,12 @@ function getValidSignalCache() {
   return signalCache
 }
 
-// 计算综合评分 - V7最终版
+// 计算综合评分 - V8 100分制版本
 // 核心逻辑：
-// 1. 有插针信号 → 使用 signalConfidence（正数做多60-100，负数做空-100到-60）
-// 2. 无插针信号 → 技术指标打基础分(0-50)，显示市场状态
+// 1. 有插针信号 → 使用 signalConfidence（正数做多0-100，负数做空-100到0）
+// 2. 无插针信号 → 技术指标打基础分，显示市场状态
 function calculateOverallScore(result) {
-  if (!result) return 25  // 无数据返回偏低分
+  if (!result) return 0  // 无数据返回0分
 
   // 检查是否有有效的信号缓存
   const cache = getValidSignalCache()
@@ -991,63 +992,63 @@ function calculateOverallScore(result) {
     return Math.round(result.signalConfidence)  // 做多正数，做空负数
   }
 
-  // ── 2. 无插针信号：用技术指标打基础分(0-50) ──
-  let score = 25  // 基础分25
+  // ── 2. 无插针信号：用技术指标打基础分 ──
+  let score = 0  // 基础分0
 
-  // 趋势加分 (0-8分)
+  // 趋势加分 (0-20分)
   if (result.trend) {
-    if (result.trend.includes('上涨') || result.trend.includes('多头')) score += 8
-    else if (result.trend.includes('下跌') || result.trend.includes('空头')) score -= 5
+    if (result.trend === 'up') score += 20
+    else if (result.trend === 'down') score -= 15
   }
 
-  // RSI加分 (0-8分) - 超卖加分，超买减分
+  // RSI加分 (0-20分) - 超卖加分，超买减分
   if (result.rsiVal !== undefined) {
     const rsi = result.rsiVal
-    if (rsi < 30) score += 8  // 严重超卖，有反弹可能
-    else if (rsi < 40) score += 5
-    else if (rsi < 50) score += 3
-    else if (rsi > 70) score -= 5  // 严重超买
-    else if (rsi > 60) score -= 3
-    else if (rsi > 50) score += 1
+    if (rsi < 30) score += 20  // 严重超卖，有反弹可能
+    else if (rsi < 40) score += 15
+    else if (rsi < 50) score += 10
+    else if (rsi > 70) score -= 15  // 严重超买
+    else if (rsi > 60) score -= 10
+    else if (rsi > 50) score += 5
   }
 
-  // MACD加分 (0-7分)
+  // MACD加分 (0-15分)
   if (result.macdBar !== undefined) {
-    if (result.macdBar > 0) score += 7
-    else score -= 3
+    if (result.macdBar > 0) score += 15
+    else score -= 10
   }
 
-  // KDJ加分 (0-7分) - 超卖加分
+  // KDJ加分 (0-15分) - 超卖加分
   if (result.jVal !== undefined) {
     const j = result.jVal
-    if (j < 20) score += 7  // 严重超卖
-    else if (j < 35) score += 5
-    else if (j < 50) score += 2
-    else if (j > 80) score -= 4  // 严重超买
-    else if (j > 65) score -= 2
+    if (j < 20) score += 15  // 严重超卖
+    else if (j < 35) score += 10
+    else if (j < 50) score += 5
+    else if (j > 80) score -= 10  // 严重超买
+    else if (j > 65) score -= 5
     else score += 0
   }
 
-  // BOLL位置加分 (0-5分) - 接近下轨加分，上轨减分
+  // BOLL位置加分 (0-10分) - 接近下轨加分，上轨减分
   if (result.bollLast && result.lastBar) {
     const { upper, lower } = result.bollLast
     const price = result.lastBar.close
     const bollPercent = ((price - lower) / (upper - lower)) * 100
-    if (bollPercent < 20) score += 5  // 接近下轨，极度超卖
-    else if (bollPercent < 30) score += 4
-    else if (bollPercent < 40) score += 2
-    else if (bollPercent > 80) score -= 3  // 接近上轨
-    else if (bollPercent > 70) score -= 2
+    if (bollPercent < 20) score += 10  // 接近下轨，极度超卖
+    else if (bollPercent < 30) score += 8
+    else if (bollPercent < 40) score += 5
+    else if (bollPercent > 80) score -= 8  // 接近上轨
+    else if (bollPercent > 70) score -= 5
     else score += 0
   }
 
-  // 最终范围：0-50分（无插针时不会超过50）
-  return Math.min(50, Math.max(0, Math.round(score)))
+  // 最终范围：-50到50分（无插针时的基础分）
+  return Math.min(50, Math.max(-50, Math.round(score)))
 }
 
 
 
-// 更新评分圆盘UI - V7最终版
+// 更新评分圆盘UI - V8 100分制版本
 // 规则：
 // - 60分以上：显示做多/做空信号 + 倒计时
 // - 60分以下：显示震荡/观望状态，不显示具体分数
@@ -1106,12 +1107,12 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     let statusLabel = '观望'
     let statusIcon = '⏳'
     
-    if (trend === 'strong_bull' || trend === 'bull') {
+    if (trend === 'up') {
       statusLabel = '偏多观望'
       statusIcon = '📈'
       circle.style.stroke = '#10b981'
       scoreText.style.color = '#10b981'
-    } else if (trend === 'strong_bear' || trend === 'bear') {
+    } else if (trend === 'down') {
       statusLabel = '偏空观望'
       statusIcon = '📉'
       circle.style.stroke = '#ef4444'
@@ -1134,7 +1135,7 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
   }
 }
 
-// 更新评分进度条指示器
+// 更新评分进度条指示器 - V8 100分制版本
 function updateScoreBarIndicator(score, hasSignal = true, direction = 'neutral') {
   const pointer = document.getElementById('scoreBarPointer')
   const statusEl = document.getElementById('currentStatus')
@@ -1158,9 +1159,9 @@ function updateScoreBarIndicator(score, hasSignal = true, direction = 'neutral')
   const isLong = score > 0
   const absScore = Math.abs(score)
   
-  // 指针位置：0在中间，50在右边缘，-50在左边缘
-  // 正数(做多)：50 + absScore/2 → 50到100
-  // 负数(做空)：50 - absScore/2 → 50到0
+  // 指针位置：0在左边缘(-100)，50在中间(0)，100在右边缘(+100)
+  // 正数(做多)：50 + (absScore / 2) → 50到100
+  // 负数(做空)：50 - (absScore / 2) → 50到0
   let position = isLong ? 50 + (absScore / 2) : 50 - (absScore / 2)
   position = Math.max(0, Math.min(100, position))
   

@@ -249,38 +249,38 @@ function checkMultiPeriodResonance(currentBars, higherBars) {
   };
 }
 
-/** 信号强度评分系统 (1-5星) - 返回详细得分 */
+/** 信号强度评分系统 - 直接100分制 */
 function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var score = 0;
-  var maxScore = 35;
+  var maxScore = 100;
   var scoreDetails = {
-    baseConditions: { score: 0, max: 6, items: [] },
-    resonance: { score: 0, max: 15, items: [] },
-    trend: { score: 0, max: 6, items: [] },
-    volatility: { score: 0, max: 6, items: [] },
-    volume: { score: 0, max: 3, items: [] }
+    baseConditions: { score: 0, max: 17, items: [] },  // 17% of total
+    resonance: { score: 0, max: 43, items: [] },       // 43% of total
+    trend: { score: 0, max: 17, items: [] },           // 17% of total
+    volatility: { score: 0, max: 17, items: [] },      // 17% of total
+    volume: { score: 0, max: 6, items: [] }            // 6% of total
   };
   
-  // 基础条件评分 (0-6分)
+  // 基础条件评分 (0-17分)
   conditions.forEach(function(c) {
-    var itemScore = c.ok ? 2 : 0;
+    var itemScore = c.ok ? 5.7 : 0; // 每项5.7分，3项共17.1分
     score += itemScore;
     scoreDetails.baseConditions.score += itemScore;
     scoreDetails.baseConditions.items.push({
       label: c.label,
-      score: itemScore,
-      max: 2,
+      score: Math.round(itemScore),
+      max: 6,
       ok: c.ok,
       tip: c.tip
     });
   });
   
-  // 多周期共振评分 (0-15分)
+  // 多周期共振评分 (0-43分)
   var resonanceItems = [
-    { key: 'trend_aligned', label: '趋势一致性', score: 5, ok: resonance.trend_aligned },
-    { key: 'rsi_extreme', label: 'RSI极端值', score: 3, ok: resonance.rsi_extreme },
-    { key: 'macd_aligned', label: 'MACD方向', score: 4, ok: resonance.macd_aligned },
-    { key: 'volume_confirmed', label: '成交量确认', score: 3, ok: resonance.volume_confirmed }
+    { key: 'trend_aligned', label: '趋势一致性', score: 15, ok: resonance.trend_aligned },
+    { key: 'rsi_extreme', label: 'RSI极端值', score: 9, ok: resonance.rsi_extreme },
+    { key: 'macd_aligned', label: 'MACD方向', score: 12, ok: resonance.macd_aligned },
+    { key: 'volume_confirmed', label: '成交量确认', score: 7, ok: resonance.volume_confirmed }
   ];
   resonanceItems.forEach(function(item) {
     var itemScore = item.ok ? item.score : 0;
@@ -294,33 +294,31 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
     });
   });
   
-  // 趋势强度评分 (0-6分)
+  // 趋势强度评分 (0-17分)
   var trend = determineTrend(bars);
   var trendScore = 0;
   var trendLabel = '';
-  if (trend.trend === 'strong_bull' || trend.trend === 'strong_bear') {
-    trendScore = 6;
+  if (trend.trend === 'up' || (signalType === 'short' && trend.trend === 'down')) {
+    trendScore = 17;
     trendLabel = '强势' + (signalType === 'long' ? '多头' : '空头');
-  } else if (trend.trend === 'bull' || trend.trend === 'bear') {
-    trendScore = 4;
+  } else if (trend.trend === 'sideways') {
+    trendScore = 11;
     trendLabel = '一般' + (signalType === 'long' ? '多头' : '空头');
-  } else if (trend.trend === 'neutral') {
-    trendScore = 1;
-    trendLabel = '中性趋势';
   } else {
-    trendLabel = '震荡行情';
+    trendScore = 3;
+    trendLabel = '中性趋势';
   }
   score += trendScore;
   scoreDetails.trend.score = trendScore;
   scoreDetails.trend.items.push({
     label: trendLabel,
     score: trendScore,
-    max: 6,
+    max: 17,
     trend: trend.trend,
-    strength: trend.strength
+    strength: trend.trendStrength
   });
   
-  // 波动率评分 (0-6分)
+  // 波动率评分 (0-17分)
   var atrValues = calculateATR(bars);
   var currentATR = atrValues[atrValues.length - 1];
   var price = bars[bars.length - 1].close;
@@ -329,13 +327,13 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var volatilityLabel = '';
   
   if (atrPercent >= 2 && atrPercent <= 4) {
-    volatilityScore = 6;
+    volatilityScore = 17;
     volatilityLabel = '理想波动率(' + atrPercent.toFixed(2) + '%)';
   } else if (atrPercent >= 1 && atrPercent <= 5) {
-    volatilityScore = 4;
+    volatilityScore = 11;
     volatilityLabel = '良好波动率(' + atrPercent.toFixed(2) + '%)';
   } else if (atrPercent >= 0.5 && atrPercent <= 8) {
-    volatilityScore = 2;
+    volatilityScore = 6;
     volatilityLabel = '一般波动率(' + atrPercent.toFixed(2) + '%)';
   } else {
     volatilityLabel = '波动率异常(' + atrPercent.toFixed(2) + '%)';
@@ -345,11 +343,11 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   scoreDetails.volatility.items.push({
     label: volatilityLabel,
     score: volatilityScore,
-    max: 6,
+    max: 17,
     atrPercent: atrPercent
   });
   
-  // 成交量评分 (0-3分)
+  // 成交量评分 (0-6分)
   var avgVolume = getAverageVolume(bars, 20);
   var lastVolume = bars[bars.length - 1].volume;
   var volumeScore = 0;
@@ -357,13 +355,13 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var volumeRatio = lastVolume / avgVolume;
   
   if (lastVolume > avgVolume * 1.5) {
-    volumeScore = 3;
+    volumeScore = 6;
     volumeLabel = '放量(' + volumeRatio.toFixed(2) + '倍)';
   } else if (lastVolume > avgVolume * 1.2) {
-    volumeScore = 2;
+    volumeScore = 4;
     volumeLabel = '温和放量(' + volumeRatio.toFixed(2) + '倍)';
   } else if (lastVolume > avgVolume) {
-    volumeScore = 1;
+    volumeScore = 2;
     volumeLabel = '轻微放量(' + volumeRatio.toFixed(2) + '倍)';
   } else {
     volumeLabel = '缩量(' + volumeRatio.toFixed(2) + '倍)';
@@ -373,7 +371,7 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   scoreDetails.volume.items.push({
     label: volumeLabel,
     score: volumeScore,
-    max: 3,
+    max: 6,
     volumeRatio: volumeRatio
   });
   
@@ -590,17 +588,17 @@ async function detectSignal(interval) {
   var signalStrength = 0;
   var scoreDetails = null;
   
-  // 将0-35分映射到60-100分（做多）或-100到-60分（做空）
+  // 直接使用100分制，做多为正值，做空为负值
   if (signalType && scoreResult) {
     var rawScore = scoreResult.rawScore;
     scoreDetails = scoreResult.details;
     
     if (signalType === 'long') {
-      // 做多：0-35 → 60-100分
-      signalStrength = Math.round(60 + (rawScore / 35) * 40);
+      // 做多：0-100分
+      signalStrength = Math.round(rawScore);
     } else {
-      // 做空：0-35 → -100到-60分
-      signalStrength = Math.round(-100 + (rawScore / 35) * 40);
+      // 做空：-100到0分
+      signalStrength = Math.round(-rawScore);
     }
     
     // ★ 记录信号生成
