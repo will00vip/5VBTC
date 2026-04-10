@@ -59,8 +59,13 @@ class EnhancedPushSystem {
       '普通': ['toast']              // 50-69分：Toast
     }
     
-    // 推送历史记录（用于频率控制）
-    this.pushHistory = []
+    // 推送历史记录（用于频率控制）- 从localStorage加载
+    const savedHistory = localStorage.getItem('push_history')
+    this.pushHistory = savedHistory ? JSON.parse(savedHistory) : []
+    
+    // 清理过期记录（保留24小时）
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000
+    this.pushHistory = this.pushHistory.filter(push => push.time > dayAgo)
     
     // 推送频率控制（分钟）
     this.pushCooldown = {
@@ -191,6 +196,9 @@ class EnhancedPushSystem {
     // 清理过期记录（保留24小时）
     const dayAgo = Date.now() - 24 * 60 * 60 * 1000
     this.pushHistory = this.pushHistory.filter(push => push.time > dayAgo)
+    
+    // 保存到localStorage
+    localStorage.setItem('push_history', JSON.stringify(this.pushHistory))
   }
   
   // 推送信号
