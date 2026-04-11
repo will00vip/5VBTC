@@ -486,3 +486,130 @@ html, body {
   .共振矩阵 { grid-template-columns: repeat(2, 1fr); }
   .仓位-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ─── 变盘提醒样式 ─── */
+.reversal-alert {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 400px;
+  background: var(--bg-card);
+  border: 2px solid var(--yellow);
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(210, 153, 34, 0.3);
+  padding: 24px;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.reversal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reversal-icon {
+  font-size: 24px;
+  margin-right: 12px;
+}
+
+.reversal-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--yellow);
+  flex: 1;
+}
+
+.reversal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-dim);
+  transition: all 0.2s ease;
+}
+
+.reversal-close:hover {
+  color: var(--text);
+}
+
+.reversal-body {
+  margin-bottom: 20px;
+}
+
+.reversal-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.info-label {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.info-value {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.reversal-tips {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(210, 153, 34, 0.1);
+  border-radius: 8px;
+  border-left: 4px solid var(--yellow);
+}
+
+.reversal-tips ul {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+}
+
+.reversal-tips li {
+  margin-bottom: 4px;
+  color: var(--yellow);
+  font-size: 12px;
+}
+
+.reversal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.reversal-action-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+}
+
+.reversal-action-btn:first-child {
+  background: var(--yellow);
+  color: #0d1117;
+}
+
+.reversal-action-btn:first-child:hover {
+  background: #b48200;
+}
+
+.reversal-action-btn:last-child {
+  background: var(--bg-light);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.reversal-action-btn:last-child:hover {
+  background: var(--bg);
+}

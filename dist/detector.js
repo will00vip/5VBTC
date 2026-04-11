@@ -77,11 +77,29 @@ function checkSignalCooldown(lastSignal, currentType) {
 
 // ★ 记录信号生成
 function recordSignal(signalType, score) {
+  // 检查是否为变盘信号
+  const lastType = _signalHistory.lastSignalType;
+  const isReversal = lastType && signalType && lastType !== signalType;
+  
   _signalHistory.lastSignalTime = Date.now();
   _signalHistory.lastSignalType = signalType;
   _signalHistory.lastSignalScore = score;
   _signalHistory.signalCount++;
-  console.log('[信号记录] 类型:', signalType, '分数:', score, '时间:', new Date().toLocaleString());
+  
+  if (isReversal) {
+    console.log('[变盘信号] 类型:', signalType, '分数:', score, '时间:', new Date().toLocaleString());
+    // 触发变盘提醒
+    if (typeof window.onReversalSignal === 'function') {
+      window.onReversalSignal({
+        type: signalType,
+        score: score,
+        lastType: lastType,
+        timestamp: Date.now()
+      });
+    }
+  } else {
+    console.log('[信号记录] 类型:', signalType, '分数:', score, '时间:', new Date().toLocaleString());
+  }
 }
 
 // ★ 记录交易

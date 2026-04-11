@@ -386,6 +386,107 @@ class EnhancedPushSystem {
 // 创建推送系统实例
 const pushSystem = new EnhancedPushSystem()
 
+// ★ 变盘信号处理函数
+window.onReversalSignal = function(reversalData) {
+  console.log('[变盘提醒] 检测到变盘信号:', reversalData);
+  
+  // 触发强烈震动提醒
+  triggerVibration('TRIPLE_ALERT', 'Heavy');
+  
+  // 创建变盘特别提醒
+  showReversalAlert(reversalData);
+  
+  // 推送变盘通知
+  pushReversalNotification(reversalData);
+};
+
+// 显示变盘特别提醒
+function showReversalAlert(reversalData) {
+  try {
+    const alert = document.createElement('div');
+    alert.className = 'reversal-alert';
+    
+    const directionText = reversalData.type === 'long' ? '做多' : '做空';
+    const lastDirectionText = reversalData.lastType === 'long' ? '做多' : '做空';
+    
+    alert.innerHTML = `
+      <div class="reversal-header">
+        <span class="reversal-icon">⚠️</span>
+        <span class="reversal-title">变盘信号</span>
+        <button class="reversal-close">×</button>
+      </div>
+      <div class="reversal-body">
+        <div class="reversal-info">
+          <span class="info-label">方向变化:</span>
+          <span class="info-value">${lastDirectionText} → ${directionText}</span>
+        </div>
+        <div class="reversal-info">
+          <span class="info-label">信号强度:</span>
+          <span class="info-value">${Math.abs(reversalData.score)}分</span>
+        </div>
+        <div class="reversal-info">
+          <span class="info-label">时间:</span>
+          <span class="info-value">${new Date(reversalData.timestamp).toLocaleString()}</span>
+        </div>
+        <div class="reversal-tips">
+          <strong>操作建议:</strong>
+          <ul>
+            <li>立即检查当前持仓</li>
+            <li>设置止损保护</li>
+            <li>准备反向开仓</li>
+            <li>关注成交量变化</li>
+          </ul>
+        </div>
+      </div>
+      <div class="reversal-actions">
+        <button class="reversal-action-btn" onclick="window.location.href='#trade'">交易面板</button>
+        <button class="reversal-action-btn" onclick="window.location.href='#chart'">查看图表</button>
+      </div>
+    `;
+    
+    // 添加到页面
+    document.body.appendChild(alert);
+    
+    // 添加关闭按钮事件
+    const closeBtn = alert.querySelector('.reversal-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        alert.style.opacity = '0';
+        alert.style.transform = 'translateY(-50px)';
+        setTimeout(() => alert.remove(), 300);
+      });
+    }
+    
+    console.log('[变盘提醒] 特别提醒已显示');
+  } catch (e) {
+    console.warn('[变盘提醒] 显示失败:', e.message);
+  }
+}
+
+// 推送变盘通知
+function pushReversalNotification(reversalData) {
+  const directionText = reversalData.type === 'long' ? '做多' : '做空';
+  const score = Math.abs(reversalData.score);
+  const price = window._wsLastBar?.close || 0;
+  
+  // 创建变盘信号对象
+  const reversalSignal = {
+    type: reversalData.type,
+    signalStrength: reversalData.score,
+    signalConfidence: reversalData.score,
+    trend: reversalData.type === 'long' ? 'up' : 'down',
+    bars: window._wsLastBar ? [window._wsLastBar] : []
+  };
+  
+  // 使用推送系统发送变盘通知
+  pushSystem.pushSignal(
+    reversalSignal,
+    `变盘信号：${directionText}`,
+    reversalData.score,
+    price
+  );
+}
+
 
 
 document.addEventListener('DOMContentLoaded', function() {
