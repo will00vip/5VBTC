@@ -83,8 +83,8 @@ var CONFIG = {
 
   // 信号推送配置
   SIGNAL_NOTIFY: {
-    enabled: false,
-    minScore: 70,
+    enabled: true,
+    minScore: 60,
     cooldownSec: 300,
   }
 };

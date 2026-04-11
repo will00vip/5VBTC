@@ -22,7 +22,9 @@ var _signalHistory = {
   lastSignalTime: 0,
   lastSignalType: null,
   lastSignalScore: 0,
-  signalCount: 0
+  signalCount: 0,
+  lastPushScore: 0,
+  lastPushTime: 0
 };
 
 // ★ 交易记录和绩效分析
@@ -85,6 +87,13 @@ function recordSignal(signalType, score) {
   _signalHistory.lastSignalType = signalType;
   _signalHistory.lastSignalScore = score;
   _signalHistory.signalCount++;
+  
+  // 检查是否需要推送
+  const absScore = Math.abs(score);
+  if (absScore >= 60) {
+    _signalHistory.lastPushScore = score;
+    _signalHistory.lastPushTime = Date.now();
+  }
   
   if (isReversal) {
     console.log('[变盘信号] 类型:', signalType, '分数:', score, '时间:', new Date().toLocaleString());

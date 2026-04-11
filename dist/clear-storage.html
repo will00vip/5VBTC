@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>清理存储</title>
+</head>
+<body>
+    <h1>清理本地存储</h1>
+    <button onclick="clearStorage()">清理版本历史</button>
+    <div id="status"></div>
+    
+    <script>
+        function clearStorage() {
+            localStorage.removeItem('btc_versions');
+            document.getElementById('status').textContent = '版本历史已清理';
+            console.log('版本历史已清理');
+        }
+    </script>
+</body>
+</html>

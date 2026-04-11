@@ -474,9 +474,10 @@
       <div class="trade-v1-title">
         <span class="trade-v1-icon">📊</span>
         <span>交易系统V1</span>
+        <span id="roundInfo" class="trade-v1-round-info">第1轮</span>
       </div>
       <button class="trade-v1-start-btn" id="startTradeBtn" onclick="toggleTradeSession()">
-        <span id="startBtnText">🚀 开始</span>
+        <span id="startBtnText">🔄 重置</span>
       </button>
     </div>
     
@@ -493,7 +494,7 @@
         <div class="setting-item-inline">
           <label class="setting-label">杠杆</label>
           <div class="setting-input-group">
-            <input type="number" id="tradeLeverage" value="30" min="30" max="30" step="1" disabled>
+            <input type="number" id="tradeLeverage" value="30" min="1" max="100" step="1" onchange="updateLeverage(this.value)">
             <span class="input-suffix">×</span>
           </div>
         </div>
@@ -803,23 +804,7 @@
     </div>
   </section>
 
-  <!-- 底部信息 -->
-  <footer class="footer-section">
-    <div class="footer-info">
-      <div class="footer-item">
-        <span class="footer-label">系统版本</span>
-        <span class="footer-value">V1 三步法</span>
-      </div>
-      <div class="footer-item">
-        <span class="footer-label">数据来源</span>
-        <span class="footer-value">Binance API</span>
-      </div>
-      <div class="footer-item">
-        <span class="footer-label">策略模式</span>
-        <span class="footer-value">日线→1h→5m</span>
-      </div>
-    </div>
-  </footer>
+
 
 </div><!-- /container 信号页结束 -->
 
@@ -965,10 +950,10 @@ function updateScoreDial(score) {
       <div style="margin-bottom:15px;">
         <h3 style="font-size:14px;color:#3b82f6;margin:0 0 8px;">🎯 三步法综合评分系统</h3>
         <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.6;">
-          智能综合评分：<strong>0-100分</strong><br>
+          智能综合评分：<strong>-100到100分</strong><br>
           • <strong style="color:#10b981;">≥60分</strong>：做多信号<br>
-          • <strong style="color:#fbbf24;">40-60分</strong>：观望<br>
-          • <strong style="color:#ef4444;">≤40分</strong>：做空信号
+          • <strong style="color:#fbbf24;">-60到60分</strong>：观望<br>
+          • <strong style="color:#ef4444;">≤-60分</strong>：做空信号
         </p>
       </div>
 
@@ -1017,15 +1002,15 @@ function updateScoreDial(score) {
         <p style="font-size:12px;color:#94a3b8;margin:0 0 10px;line-height:1.6;">
           系统基于多指标综合评分：<br><br>
           • <strong style="color:#10b981;">≥60分</strong>：做多信号<br>
-          • <strong style="color:#fbbf24;">40-60分</strong>：观望<br>
-          • <strong style="color:#ef4444;">≤40分</strong>：做空信号<br><br>
-          评分范围：<strong>0-100分</strong>
+          • <strong style="color:#fbbf24;">-60到60分</strong>：观望<br>
+          • <strong style="color:#ef4444;">≤-60分</strong>：做空信号<br><br>
+          评分范围：<strong>-100到100分</strong>
         </p>
       </div>
 
       <div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:12px;">
         <p style="font-size:12px;color:#fbbf24;margin:0;line-height:1.6;">
-          💡 <strong>核心策略</strong>：60分以上才可做多，40分以下才可做空，严格控制风险
+          💡 <strong>核心策略</strong>：60分以上才可做多，-60分以下才可做空，严格控制风险
         </p>
       </div>
     </div>
@@ -1049,13 +1034,7 @@ function updateScoreDial(score) {
   </div>
 </div>
 
-<!-- 底部导航 -->
-<div class="bottom-nav" id="bottomNav">
-  <button class="nav-item active" data-page="main" onclick="switchPage('main')">
-    <span class="nav-icon">📊</span>
-    <span class="nav-label">信号</span>
-  </button>
-</div>
+
 
 <script>
 function switchPage(page) {
@@ -1189,12 +1168,16 @@ document.addEventListener('DOMContentLoaded', function() {
     settingsBtn.addEventListener('click', showAboutPanel)
   }
   
+  // 清理本地存储中的旧版本历史
+  localStorage.removeItem('btc_versions')
+  localStorage.removeItem('btc_signal_history')
+  
   // 初始化版本系统
   if (window.BTCSignal?.VersionSystem) {
     // 记录当前版本
-    window.BTCSignal.VersionSystem.recordVersion('V1', '简化版：0-100评分 · 60分以上做多 · 40分以下做空', {
+    window.BTCSignal.VersionSystem.recordVersion('V1', '基础版本：100分制评分系统', {
       timestamp: new Date().toISOString(),
-      features: '简化评分系统 · 算法优化 · 版本V1'
+      features: '基础版本：100分制评分系统'
     })
   }
 })

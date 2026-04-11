@@ -2271,6 +2271,18 @@ body {
   color: #e2e8f0;
 }
 
+
+
+.trade-v1-round-info {
+  font-size: 12px;
+  color: #94a3b8;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  margin-left: 8px;
+}
+
 /* 🐱 猫咪表情区 - AI智能版 */
 .hibernate-card {
   margin: 40px 0 24px;

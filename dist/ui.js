@@ -185,16 +185,17 @@ class EnhancedPushSystem {
   }
   
   // 记录推送历史
-  recordPush(priority, signalType, score) {
+  recordPush(priority, signalType, score, status = 'success') {
     this.pushHistory.push({
       time: Date.now(),
       priority: priority,
       signalType: signalType,
-      score: score
+      score: score,
+      status: status
     })
     
-    // 清理过期记录（保留24小时）
-    const dayAgo = Date.now() - 24 * 60 * 60 * 1000
+    // 清理过期记录（保留7天）
+    const dayAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
     this.pushHistory = this.pushHistory.filter(push => push.time > dayAgo)
     
     // 保存到localStorage
@@ -230,24 +231,35 @@ class EnhancedPushSystem {
     
     // 获取推送渠道
     const channels = this.pushChannels[priority]
+    let status = 'success'
     
     // 执行推送
-    for (const channel of channels) {
-      switch (channel) {
-        case 'sms':
-          await this.sendSMS(result, directionText, score, price, priority)
-          break
-        case 'toast':
-          this.showToast(result, directionText, score, price, priority)
-          break
-        case 'notification':
-          this.showNotification(result, directionText, score, price, priority)
-          break
+    try {
+      for (const channel of channels) {
+        switch (channel) {
+          case 'sms':
+            await this.sendSMS(result, directionText, score, price, priority)
+            break
+          case 'toast':
+            this.showToast(result, directionText, score, price, priority)
+            break
+          case 'notification':
+            this.showNotification(result, directionText, score, price, priority)
+            break
+        }
       }
+    } catch (error) {
+      console.error('[推送] 推送失败:', error)
+      status = 'failed'
+    }
+    
+    // 更新评分缓存，确保显示与推送同步
+    if (typeof updateScoreCache === 'function') {
+      updateScoreCache(score)
     }
     
     // 记录推送历史
-    this.recordPush(priority, signalType, score)
+    this.recordPush(priority, signalType, score, status)
   }
   
   // SMS推送
@@ -385,6 +397,86 @@ class EnhancedPushSystem {
 
 // 创建推送系统实例
 const pushSystem = new EnhancedPushSystem()
+
+// 更新推送管理界面数据
+function updatePushManagementUI() {
+  const pushHistory = pushSystem.pushHistory || []
+  const now = Date.now()
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000
+  
+  // 统计总推送
+  const totalPushes = pushHistory.length
+  
+  // 统计成功和失败（这里简化处理，实际应该根据推送结果判断）
+  const successCount = pushHistory.filter(push => push.status !== 'failed').length
+  const failureCount = pushHistory.filter(push => push.status === 'failed').length
+  
+  // 计算胜率（这里简化处理，实际应该根据交易结果判断）
+  const successRate = totalPushes > 0 ? Math.round((successCount / totalPushes) * 100) : 0
+  
+  // 统计最近7天的推送
+  const recentPushes = pushHistory.filter(push => push.time >= sevenDaysAgo)
+  const recentSuccessCount = recentPushes.filter(push => push.status !== 'failed').length
+  const recentRate = recentPushes.length > 0 ? Math.round((recentSuccessCount / recentPushes.length) * 100) : 0
+  
+  // 统计做多/做空
+  const longCount = pushHistory.filter(push => push.signalType === 'long').length
+  const shortCount = pushHistory.filter(push => push.signalType === 'short').length
+  
+  // 计算平均评分
+  const totalScore = pushHistory.reduce((sum, push) => sum + Math.abs(push.score), 0)
+  const avgScore = totalPushes > 0 ? Math.round(totalScore / totalPushes) : 0
+  
+  // 更新界面
+  document.getElementById('totalPushes').textContent = totalPushes
+  document.getElementById('successCount').textContent = successCount
+  document.getElementById('failureCount').textContent = failureCount
+  document.getElementById('successRate').textContent = `${successRate}%`
+  document.getElementById('pendingCount').textContent = 0 // 待处理数量（简化）
+  document.getElementById('recentRate').textContent = `${recentRate}%`
+  document.getElementById('longShortRatio').textContent = `${longCount} / ${shortCount}`
+  document.getElementById('avgScore').textContent = avgScore
+}
+
+// 清空推送历史
+function clearPushHistory() {
+  pushSystem.pushHistory = []
+  localStorage.removeItem('push_history')
+  updatePushManagementUI()
+  showToast('推送历史已清空', 'success')
+}
+
+// 切换推送管理界面
+function togglePushSection() {
+  const content = document.getElementById('pushContent')
+  const icon = document.getElementById('pushToggleIcon')
+  if (content.style.display === 'none') {
+    content.style.display = 'block'
+    icon.textContent = '▼'
+    updatePushManagementUI() // 显示时更新数据
+  } else {
+    content.style.display = 'none'
+    icon.textContent = '▶'
+  }
+}
+
+// 初始化推送管理界面
+document.addEventListener('DOMContentLoaded', function() {
+  // 绑定刷新按钮
+  const refreshBtn = document.querySelector('.push-actions .btn-primary')
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', updatePushManagementUI)
+  }
+  
+  // 绑定清空按钮
+  const clearBtn = document.querySelector('.push-actions .btn-danger')
+  if (clearBtn) {
+    clearBtn.addEventListener('click', clearPushHistory)
+  }
+  
+  // 初始更新
+  updatePushManagementUI()
+})
 
 // ★ 变盘信号处理函数
 window.onReversalSignal = function(reversalData) {
@@ -1233,6 +1325,13 @@ function calculateOverallScore(result) {
 // 规则：
 // - 60分以上：显示做多/做空信号 + 倒计时
 // - 60分以下：显示震荡/观望状态，不显示具体分数
+// 评分缓存，用于保持显示与推送的同步
+let scoreCache = {
+  pushScore: 0,
+  pushTime: 0,
+  validUntil: 0
+};
+
 function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResult = null) {
   const circle = document.getElementById('scoreCircle')
   const scoreText = document.getElementById('dialScore')
@@ -1244,15 +1343,23 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
   const circumference = 2 * Math.PI * 90
   circle.style.strokeDasharray = `${circumference} ${circumference}`
   
-  // 检查是否是0-100的百分比分数（无信号时的技术指标评分）
-  const isPercentageScore = score >= 0 && score <= 100
+  // 检查是否在推送冷却期内，如果是，使用缓存的评分
+  const now = Date.now();
+  let displayScore = score;
+  let displayHasSignal = hasSignal;
+  
+  // 如果有缓存的推送评分且未过期，使用缓存的评分
+  if (scoreCache.pushScore !== 0 && now < scoreCache.validUntil) {
+    displayScore = scoreCache.pushScore;
+    displayHasSignal = true;
+  }
   
   // 获取实际信号分数（用于判断）
-  const signalScore = score // 使用传入的score参数
+  const signalScore = displayScore
   const absSignalScore = Math.abs(signalScore)
   
   // ★ 60分以上才显示信号
-  const hasStrongSignal = hasSignal && absSignalScore >= 60
+  const hasStrongSignal = displayHasSignal && absSignalScore >= 60
   
   if (hasStrongSignal) {
     // ★ 60分以上：显示信号和倒计时
@@ -1283,39 +1390,47 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     }
     
   } else {
-    // ★ 无信号或信号强度不足：显示震荡/观望状态
+    // ★ 无信号或信号强度不足：显示偏多/偏空/震荡状态
+    
+    // 处理不同的趋势值
+    let normalizedTrend = trend;
+    if (trend === 'strong_bull' || trend === 'bull') {
+      normalizedTrend = 'up';
+    } else if (trend === 'strong_bear' || trend === 'bear') {
+      normalizedTrend = 'down';
+    }
     
     // 根据趋势显示不同状态
-    let statusLabel = '观望'
-    let statusColor = '#6b7280'
-    let displayText = '观望'
+    let statusLabel = '震荡'
+    let statusColor = '#f59e0b'
+    let displayText = '震荡'
     let indicatorValue = 0
     
-    if (trend === 'up') {
-      statusLabel = '偏多观望'
+    if (normalizedTrend === 'up') {
+      statusLabel = '偏多'
       statusColor = '#10b981'
       displayText = '偏多'
       indicatorValue = 30
-    } else if (trend === 'down') {
-      statusLabel = '偏空观望'
+    } else if (normalizedTrend === 'down') {
+      statusLabel = '偏空'
       statusColor = '#ef4444'
       displayText = '偏空'
       indicatorValue = -30
-    } else if (trend === 'sideways') {
-      statusLabel = '震荡整理'
+    } else {
+      statusLabel = '震荡'
       statusColor = '#f59e0b'
       displayText = '震荡'
       indicatorValue = 0
     }
     
-    // 计算圆环进度
-    const percentage = 0.5 // 50% 圆环
+    // 计算圆环进度（固定显示在30位置）
+    const percentage = 0.3 // 30% 圆环
     const offset = circumference - percentage * circumference
     circle.style.strokeDashoffset = offset
     circle.style.stroke = statusColor
     scoreText.style.color = statusColor
     
-    // 显示状态文本而不是分数
+    // 显示状态文本
     scoreText.textContent = displayText
     if (statusText) statusText.textContent = statusLabel + ' - 等待高质信号'
     
@@ -1324,7 +1439,19 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     if (countdownEl) countdownEl.style.display = 'none'
     
     // 更新指示器
-    updateScoreBarIndicator(indicatorValue, false, trend)
+    updateScoreBarIndicator(indicatorValue, false, normalizedTrend)
+  }
+}
+
+// 更新评分缓存
+function updateScoreCache(score) {
+  const absScore = Math.abs(score);
+  if (absScore >= 60) {
+    scoreCache = {
+      pushScore: score,
+      pushTime: Date.now(),
+      validUntil: Date.now() + 5 * 60 * 1000 // 缓存5分钟
+    };
   }
 }
 
@@ -4064,6 +4191,12 @@ function _renderRealSimPage() {
   }).join('')
 }
 
+// 过滤历史记录函数
+function filterHistory() {
+  console.log('过滤历史记录')
+  // 这里可以添加过滤逻辑
+}
+
 window.switchTab = switchTab
 window.filterHistory = filterHistory
 window.markRecord = markRecord
@@ -4153,61 +4286,71 @@ function saveLeverage(value) {
   localStorage.setItem('trade_leverage', value.toString())
 }
 
-// 切换交易会话（开始/重新开始）
+// 更新杠杆设置
+function updateLeverage(value) {
+  const leverage = parseInt(value) || 30
+  
+  if (leverage < 1 || leverage > 100) {
+    showToast('杠杆必须在1-100之间', 'error')
+    return
+  }
+  
+  // 保存设置
+  saveLeverage(leverage)
+  
+  // 更新SimTrader的杠杆设置
+  if (window.SimTrader) {
+    window.SimTrader.PARAMS.LEVERAGE = leverage
+  }
+  
+  showToast(`杠杆已调整为 ${leverage}×`, 'success')
+  console.log(`[Trade] 杠杆已调整为 ${leverage}×`)
+}
+
+// 重置交易会话
 function toggleTradeSession() {
   const btn = document.getElementById('startTradeBtn')
   const btnText = document.getElementById('startBtnText')
   
-  if (!tradeSessionActive) {
-    // 开始新会话
-    const newBalance = 1000 // ★ 默认1000U
-    const leverage = 30 // 默认30倍杠杆
-    
-    // 保存设置
-    saveBalance(newBalance)
-    saveLeverage(leverage)
-    
-    // 设置Simulator余额
-    if (window.Simulator) {
-      window.Simulator.balance = newBalance
-      window.Simulator.equity = newBalance
-      window.Simulator.positions = []
-      window.Simulator.save()
-    }
-    
-    sessionInitialBalance = newBalance
-    currentRound = 1
-    tradeSessionActive = true
-    
-    btn.classList.add('active')
-    btnText.textContent = '⏹ 停止'
-    
-    // 更新SimTrader的杠杆设置
-    if (window.SimTrader) {
-      window.SimTrader.PARAMS.LEVERAGE = leverage
-    }
-    
-    // ★ 自动开启自动交易
-    const autoOpenCheckbox = document.getElementById('atAutoOpen')
-    if (autoOpenCheckbox) {
-      autoOpenCheckbox.checked = true
-      // 保存设置
-      const settings = JSON.parse(localStorage.getItem('autotrade_settings') || '{}')
-      settings.autoOpen = true
-      localStorage.setItem('autotrade_settings', JSON.stringify(settings))
-      console.log('[Trade] 自动交易已开启')
-    }
-    
-    console.log(`[Trade] 会话开始 - 余额: ${newBalance}U, 杠杆: ${leverage}×`)
-  } else {
-    // 停止会话（不重置数据，累计统计）
-    tradeSessionActive = false
-    
-    btn.classList.remove('active')
-    btnText.textContent = '🚀 开始'
-    
-    console.log('[Trade] 会话暂停 - 数据已累计保存')
+  // 重置交易会话
+  const newBalance = 1000 // ★ 默认1000U
+  const leverage = parseInt(document.getElementById('tradeLeverage').value) || 30 // 使用当前杠杆设置
+  
+  // 保存设置
+  saveBalance(newBalance)
+  saveLeverage(leverage)
+  
+  // 设置Simulator余额
+  if (window.Simulator) {
+    window.Simulator.balance = newBalance
+    window.Simulator.equity = newBalance
+    window.Simulator.positions = []
+    window.Simulator.trades = []
+    window.Simulator.save()
   }
+  
+  sessionInitialBalance = newBalance
+  currentRound = 1
+  tradeSessionActive = true
+  
+  // 更新SimTrader的杠杆设置
+  if (window.SimTrader) {
+    window.SimTrader.PARAMS.LEVERAGE = leverage
+  }
+  
+  // ★ 自动开启自动交易
+  const autoOpenCheckbox = document.getElementById('atAutoOpen')
+  if (autoOpenCheckbox) {
+    autoOpenCheckbox.checked = true
+    // 保存设置
+    const settings = JSON.parse(localStorage.getItem('autotrade_settings') || '{}')
+    settings.autoOpen = true
+    localStorage.setItem('autotrade_settings', JSON.stringify(settings))
+    console.log('[Trade] 自动交易已开启')
+  }
+  
+  console.log(`[Trade] 会话重置 - 余额: ${newBalance}U, 杠杆: ${leverage}×`)
+  showToast('交易会话已重置', 'success')
   
   updateTradeV1UI()
 }
@@ -4296,6 +4439,11 @@ function initTradeSettings() {
   // 设置杠杆
   if (window.SimTrader) {
     window.SimTrader.PARAMS.LEVERAGE = defaultLeverage
+  }
+  
+  // 自动开始交易会话
+  if (!tradeSessionActive) {
+    toggleTradeSession()
   }
 }
 
@@ -5179,6 +5327,335 @@ const AutoTrade = {
   // 存储键名
   STORAGE_KEY: 'auto_trade_state',
   TRADES_KEY: 'auto_trade_history',
+  QUEUE_KEY: 'auto_trade_signal_queue',
+  ROUNDS_KEY: 'auto_trade_rounds',
+  CURRENT_ROUND_KEY: 'auto_trade_current_round',
+  
+  // 信号队列管理
+  getQueue() {
+    const saved = localStorage.getItem(this.QUEUE_KEY)
+    return saved ? JSON.parse(saved) : []
+  },
+  
+  saveQueue(queue) {
+    localStorage.setItem(this.QUEUE_KEY, JSON.stringify(queue))
+  },
+  
+  // 添加信号到队列
+  addToQueue(signal) {
+    const queue = this.getQueue()
+    // 去重：避免相同信号重复添加
+    const isDuplicate = queue.some(q => 
+      q.direction === signal.direction && 
+      q.score === signal.score && 
+      Math.abs(q.entryPrice - signal.entryPrice) < 10
+    )
+    
+    if (!isDuplicate) {
+      queue.push({
+        ...signal,
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        status: 'pending'
+      })
+      this.saveQueue(queue)
+      console.log('[AutoTrade] 信号已添加到队列:', signal.direction, signal.score)
+      this.processQueue()
+    } else {
+      console.log('[AutoTrade] 信号已存在于队列中，跳过')
+    }
+  },
+  
+  // 处理信号队列
+  processQueue() {
+    const queue = this.getQueue()
+    const pendingSignals = queue.filter(s => s.status === 'pending')
+    
+    if (pendingSignals.length === 0) {
+      console.log('[AutoTrade] 信号队列为空')
+      return
+    }
+    
+    // 按时间顺序处理
+    pendingSignals.sort((a, b) => a.timestamp - b.timestamp)
+    
+    for (const signal of pendingSignals) {
+      try {
+        console.log('[AutoTrade] 处理队列中的信号:', signal.direction, signal.score)
+        const success = this._processSignal(signal.score, signal.direction, signal.entryPrice, signal.sl, signal.tp1, signal.tp2)
+        
+        // 更新信号状态
+        const updatedQueue = queue.map(q => 
+          q.id === signal.id ? { ...q, status: success ? 'processed' : 'failed' } : q
+        )
+        this.saveQueue(updatedQueue)
+      } catch (error) {
+        console.error('[AutoTrade] 处理队列信号时出错:', error.message)
+        // 标记为失败，稍后重试
+        const updatedQueue = queue.map(q => 
+          q.id === signal.id ? { ...q, status: 'failed', error: error.message } : q
+        )
+        this.saveQueue(updatedQueue)
+      }
+    }
+  },
+  
+  // 清理队列
+  clearQueue() {
+    localStorage.removeItem(this.QUEUE_KEY)
+    console.log('[AutoTrade] 信号队列已清理')
+  },
+  
+  // 轮次管理
+  getRounds() {
+    const saved = localStorage.getItem(this.ROUNDS_KEY)
+    return saved ? JSON.parse(saved) : []
+  },
+  
+  saveRounds(rounds) {
+    localStorage.setItem(this.ROUNDS_KEY, JSON.stringify(rounds))
+  },
+  
+  getCurrentRound() {
+    const saved = localStorage.getItem(this.CURRENT_ROUND_KEY)
+    return saved ? JSON.parse(saved) : {
+      round: 1,
+      startBalance: 1000,
+      startTime: new Date().toISOString()
+    }
+  },
+  
+  saveCurrentRound(round) {
+    localStorage.setItem(this.CURRENT_ROUND_KEY, JSON.stringify(round))
+  },
+  
+  // 检查是否需要重置（当余额低于初始资金的10%时）
+  checkReset() {
+    const state = this.getState()
+    const currentRound = this.getCurrentRound()
+    
+    const threshold = currentRound.startBalance * 0.1 // 10%阈值
+    if (state.balance < threshold) {
+      console.log('[AutoTrade] 账户余额低于10%，准备重置')
+      this.endRound()
+      this.startNewRound()
+      return true
+    }
+    return false
+  },
+  
+  // 结束当前轮次
+  endRound() {
+    const state = this.getState()
+    const currentRound = this.getCurrentRound()
+    
+    const endTime = new Date().toISOString()
+    const finalBalance = state.balance
+    const profit = finalBalance - currentRound.startBalance
+    const profitPct = (profit / currentRound.startBalance) * 100
+    
+    const roundSummary = {
+      round: currentRound.round,
+      startBalance: currentRound.startBalance,
+      finalBalance: finalBalance,
+      profit: profit,
+      profitPct: profitPct,
+      startTime: currentRound.startTime,
+      endTime: endTime,
+      trades: state.trades.length,
+      winRate: this.calculateWinRate(state.trades),
+      maxDrawdown: this.calculateMaxDrawdown(state.trades)
+    }
+    
+    // 保存轮次记录
+    const rounds = this.getRounds()
+    rounds.push(roundSummary)
+    this.saveRounds(rounds)
+    
+    console.log(`[AutoTrade] 轮次 ${currentRound.round} 结束: 盈亏 ${profit.toFixed(2)}U (${profitPct.toFixed(1)}%)`)
+  },
+  
+  // 开始新一轮
+  startNewRound() {
+    const rounds = this.getRounds()
+    const newRound = rounds.length + 1
+    const startBalance = 1000 // 每轮初始资金1000U
+    
+    // 重置账户
+    const newState = {
+      initBalance: startBalance,
+      balance: startBalance,
+      currentPos: null,
+      trades: [],
+      lastSignalTime: 0,
+    }
+    
+    this.saveState(newState)
+    
+    // 保存当前轮次信息
+    const currentRound = {
+      round: newRound,
+      startBalance: startBalance,
+      startTime: new Date().toISOString()
+    }
+    this.saveCurrentRound(currentRound)
+    
+    console.log(`[AutoTrade] 开始新一轮 (${newRound}): 初始资金 ${startBalance}U`)
+    
+    // 清理信号队列
+    this.clearQueue()
+  },
+  
+  // 计算胜率
+  calculateWinRate(trades) {
+    if (trades.length === 0) return 0
+    const winTrades = trades.filter(t => t.pnl > 0).length
+    return (winTrades / trades.length) * 100
+  },
+  
+  // 计算最大回撤
+  calculateMaxDrawdown(trades) {
+    if (trades.length === 0) return 0
+    
+    let maxDrawdown = 0
+    let peak = trades[0].balance || 1000
+    
+    for (const trade of trades) {
+      if (trade.balance) {
+        if (trade.balance > peak) {
+          peak = trade.balance
+        } else {
+          const drawdown = (peak - trade.balance) / peak * 100
+          if (drawdown > maxDrawdown) {
+            maxDrawdown = drawdown
+          }
+        }
+      }
+    }
+    return maxDrawdown
+  },
+  
+  // 获取轮次统计
+  getRoundStats() {
+    const rounds = this.getRounds()
+    const currentRound = this.getCurrentRound()
+    const state = this.getState()
+    
+    // 计算当前轮次的临时统计
+    const currentProfit = state.balance - currentRound.startBalance
+    const currentProfitPct = (currentProfit / currentRound.startBalance) * 100
+    
+    return {
+      rounds: rounds,
+      currentRound: {
+        ...currentRound,
+        currentBalance: state.balance,
+        currentProfit: currentProfit,
+        currentProfitPct: currentProfitPct,
+        currentTrades: state.trades.length,
+        currentWinRate: this.calculateWinRate(state.trades)
+      },
+      totalRounds: rounds.length + 1
+    }
+  },
+  
+  // 日志管理
+  LOG_KEY: 'auto_trade_logs',
+  
+  // 记录日志
+  log(level, message, data = {}) {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level: level,
+      message: message,
+      data: data
+    }
+    
+    // 保存到本地存储
+    try {
+      const logs = this.getLogs()
+      logs.push(logEntry)
+      // 只保留最近1000条日志
+      if (logs.length > 1000) {
+        logs.splice(0, logs.length - 1000)
+      }
+      localStorage.setItem(this.LOG_KEY, JSON.stringify(logs))
+    } catch (error) {
+      console.error('[AutoTrade] 保存日志失败:', error)
+    }
+    
+    // 输出到控制台
+    const consoleMethod = level === 'error' ? console.error : 
+                         level === 'warn' ? console.warn : console.log
+    consoleMethod(`[AutoTrade][${level.toUpperCase()}] ${message}`, data)
+  },
+  
+  // 获取日志
+  getLogs() {
+    try {
+      const saved = localStorage.getItem(this.LOG_KEY)
+      return saved ? JSON.parse(saved) : []
+    } catch (error) {
+      console.error('[AutoTrade] 获取日志失败:', error)
+      return []
+    }
+  },
+  
+  // 清理日志
+  clearLogs() {
+    try {
+      localStorage.removeItem(this.LOG_KEY)
+      console.log('[AutoTrade] 日志已清理')
+    } catch (error) {
+      console.error('[AutoTrade] 清理日志失败:', error)
+    }
+  },
+  
+  // 系统状态监控
+  getSystemStatus() {
+    const state = this.getState()
+    const queue = this.getQueue()
+    const rounds = this.getRounds()
+    const currentRound = this.getCurrentRound()
+    
+    return {
+      timestamp: new Date().toISOString(),
+      account: {
+        balance: state.balance,
+        initBalance: state.initBalance,
+        hasOpenPosition: !!state.currentPos
+      },
+      queue: {
+        total: queue.length,
+        pending: queue.filter(s => s.status === 'pending').length,
+        processed: queue.filter(s => s.status === 'processed').length,
+        failed: queue.filter(s => s.status === 'failed').length
+      },
+      trading: {
+        totalTrades: state.trades.length,
+        currentRound: currentRound.round,
+        totalRounds: rounds.length + 1
+      },
+      system: {
+        lastSignalTime: state.lastSignalTime,
+        uptime: Date.now() - (currentRound.startTime ? new Date(currentRound.startTime).getTime() : Date.now())
+      }
+    }
+  },
+  
+  // 导出系统状态
+  exportStatus() {
+    const status = this.getSystemStatus()
+    const rounds = this.getRounds()
+    const trades = this.getState().trades
+    
+    return {
+      status: status,
+      rounds: rounds,
+      recentTrades: trades.slice(0, 20), // 最近20笔交易
+      exportTime: new Date().toISOString()
+    }
+  },
 
   // 获取状态
   getState() {
@@ -5233,25 +5710,55 @@ const AutoTrade = {
     // ★ 计算风险比例 (止损距离)
     const riskPercent = Math.abs(entryPrice - sl) / entryPrice
     
-    // ★ 动态仓位：根据信号质量和风险调整
+    // ★ 动态仓位：根据信号质量、风险和账户状态调整
     // 高分信号 + 小止损 = 大仓位
-    // 基础仓位：余额的 10-30%
+    // 连续亏损后降低仓位
     let positionPercent = 0.15 // 默认15%仓位
     
-    if (absScore >= 85 && riskPercent < 0.01) {
+    // 计算连续亏损次数
+    const recentTrades = state.trades.slice(0, 5) // 最近5笔交易
+    const consecutiveLosses = recentTrades.filter(t => t.pnl < 0).length
+    
+    if (consecutiveLosses >= 3) {
+      // 连续亏损3次以上，大幅降仓
+      positionPercent = 0.05 // 5%仓位
+    } else if (consecutiveLosses >= 2) {
+      // 连续亏损2次，中度降仓
+      positionPercent = 0.10 // 10%仓位
+    } else if (absScore >= 85 && riskPercent < 0.01) {
       positionPercent = 0.30 // 85分以上 + 止损<1% = 30%仓位
     } else if (absScore >= 75 && riskPercent < 0.015) {
       positionPercent = 0.25 // 75分以上 + 止损<1.5% = 25%仓位
     } else if (absScore >= 65) {
       positionPercent = 0.20 // 65分以上 = 20%仓位
-    } else {
-      positionPercent = 0.15 // 60分以上 = 15%仓位
     }
     
-    const margin = state.balance * positionPercent // 保证金
-    const posSize = margin * leverage // 名义仓位
+    // 确保仓位不超过账户余额的40%
+    positionPercent = Math.min(positionPercent, 0.40)
+    
+    let margin = state.balance * positionPercent // 保证金
+    let posSize = margin * leverage // 名义仓位
+    let riskAmount = margin * riskPercent * leverage
+    let riskPctOfBalance = (riskAmount / state.balance) * 100
+    
+    console.log(`[AutoTrade] 开仓参数: 分数=${absScore}, 杠杆=${leverage}x, 仓位=${(positionPercent*100).toFixed(0)}%, 止损=${(riskPercent*100).toFixed(2)}%, 风险金额=${riskAmount.toFixed(2)}U (${riskPctOfBalance.toFixed(1)}%)`)
 
-    console.log(`[AutoTrade] 开仓参数: 分数=${absScore}, 杠杆=${leverage}x, 仓位=${(positionPercent*100).toFixed(0)}%, 止损=${(riskPercent*100).toFixed(2)}%`)
+    // 风险控制：确保单次风险不超过账户余额的5%
+    if (riskPctOfBalance > 5) {
+      console.warn('[AutoTrade] 风险过高，调整仓位')
+      const maxRiskAmount = state.balance * 0.05
+      const adjustedPositionPercent = (maxRiskAmount / (riskPercent * leverage)) / state.balance
+      const adjustedMargin = state.balance * adjustedPositionPercent
+      const adjustedPosSize = adjustedMargin * leverage
+      const adjustedRiskAmount = adjustedMargin * riskPercent * leverage
+      
+      console.log(`[AutoTrade] 调整后参数: 仓位=${(adjustedPositionPercent*100).toFixed(0)}%, 保证金=${adjustedMargin.toFixed(2)}U, 风险金额=${adjustedRiskAmount.toFixed(2)}U`)
+      
+      margin = adjustedMargin
+      posSize = adjustedPosSize
+      positionPercent = adjustedPositionPercent
+      riskAmount = adjustedRiskAmount
+    }
 
     state.currentPos = {
       id: Date.now().toString(),
@@ -5265,6 +5772,8 @@ const AutoTrade = {
       margin, // 实际保证金
       score,
       openTime: new Date().toLocaleString('zh-CN'),
+      positionPercent: positionPercent,
+      riskAmount: riskAmount
     }
 
     this.saveState(state)
@@ -5359,6 +5868,9 @@ const AutoTrade = {
     // ★ 统计胜率
     this.updateStats()
     
+    // ★ 检查是否需要重置（开始新一轮）
+    this.checkReset()
+    
     return true
   },
   
@@ -5394,44 +5906,106 @@ const AutoTrade = {
 
   // 处理信号
   onSignal(score, direction, entryPrice, sl, tp1, tp2) {
-    console.log('[AutoTrade] 收到信号:', direction, score, '价格:', entryPrice)
-    
-    const state = this.getState()
-    // ★ 默认开启自动交易（如果用户没有明确关闭）
-    const autoOpenCheckbox = document.getElementById('atAutoOpen')
-    const autoOpen = autoOpenCheckbox ? autoOpenCheckbox.checked : true
-    const notify = document.getElementById('atNotify')?.checked
-
-    // 检查是否已有持仓
-    if (state.currentPos) {
-      console.log('[AutoTrade] 已有持仓，跳过开仓')
-      return
-    }
-
-    // 检查信号冷却（5分钟）
-    const now = Date.now()
-    if (now - state.lastSignalTime < 5 * 60 * 1000) {
-      console.log('[AutoTrade] 信号冷却中，剩余:', Math.round((5 * 60 * 1000 - (now - state.lastSignalTime)) / 1000), '秒')
-      return
-    }
-
-    // 检查是否应该开仓
-    const shouldOpen = this.shouldOpen(score, direction)
-    console.log('[AutoTrade] 检查开仓条件:', 'autoOpen=', autoOpen, 'shouldOpen=', shouldOpen, 'score=', score, 'direction=', direction, '当前持仓:', state.currentPos)
-
-    // 自动开仓
-    if (autoOpen && shouldOpen && !state.currentPos) {
-      state.lastSignalTime = now
-      this.saveState(state)
-      
-      console.log('[AutoTrade] 准备开仓:', direction, entryPrice, sl, tp1, tp2)
-      this.openPosition(direction, entryPrice, sl, tp1, tp2, score)
-
-      if (notify) {
-        this.sendNotification(direction, score, entryPrice)
+    try {
+      // 参数校验
+      if (!score || !direction || !entryPrice || !sl || !tp1 || !tp2) {
+        this.log('error', '信号参数不完整', { score, direction, entryPrice, sl, tp1, tp2 })
+        return
       }
-    } else {
-      console.log('[AutoTrade] 不满足开仓条件，跳过。autoOpen:', autoOpen, 'shouldOpen:', shouldOpen, '当前持仓:', state.currentPos)
+      
+      // 验证参数有效性
+      if (typeof score !== 'number' || score === 0) {
+        this.log('error', '信号分数无效', { score })
+        return
+      }
+      
+      if (direction !== 'long' && direction !== 'short') {
+        this.log('error', '信号方向无效', { direction })
+        return
+      }
+      
+      if (typeof entryPrice !== 'number' || entryPrice <= 0) {
+        this.log('error', '入场价格无效', { entryPrice })
+        return
+      }
+      
+      this.log('info', '收到信号', { direction, score, entryPrice, sl, tp1, tp2 })
+      
+      // 先将信号添加到队列
+      this.addToQueue({
+        score,
+        direction,
+        entryPrice,
+        sl,
+        tp1,
+        tp2
+      })
+    } catch (error) {
+      this.log('error', '处理信号时出错', { error: error.message, stack: error.stack })
+    }
+  },
+  
+  // 实际处理信号的方法
+  _processSignal(score, direction, entryPrice, sl, tp1, tp2) {
+    try {
+      const state = this.getState()
+      // ★ 默认开启自动交易（如果用户没有明确关闭）
+      const autoOpenCheckbox = document.getElementById('atAutoOpen')
+      const autoOpen = autoOpenCheckbox ? autoOpenCheckbox.checked : true
+      const notify = document.getElementById('atNotify')?.checked
+
+      // 检查是否已有持仓
+      if (state.currentPos) {
+        this.log('info', '已有持仓，跳过开仓', { currentPos: state.currentPos.id })
+        return false
+      }
+
+      // 检查信号冷却（智能冷却：根据信号强度调整）
+      const now = Date.now()
+      const absScore = Math.abs(score)
+      let cooldownTime = 5 * 60 * 1000 // 默认5分钟
+      
+      if (absScore >= 85) {
+        cooldownTime = 3 * 60 * 1000 // 强信号3分钟冷却
+      } else if (absScore >= 75) {
+        cooldownTime = 4 * 60 * 1000 // 中强信号4分钟冷却
+      }
+      
+      if (now - state.lastSignalTime < cooldownTime) {
+        const remaining = Math.round((cooldownTime - (now - state.lastSignalTime)) / 1000)
+        this.log('info', '信号冷却中', { remainingSeconds: remaining })
+        return false
+      }
+
+      // 检查是否应该开仓
+      const shouldOpen = this.shouldOpen(score, direction)
+      this.log('info', '检查开仓条件', { autoOpen, shouldOpen, score, direction, hasPosition: !!state.currentPos })
+
+      // 自动开仓
+      if (autoOpen && shouldOpen && !state.currentPos) {
+        state.lastSignalTime = now
+        this.saveState(state)
+        
+        this.log('info', '准备开仓', { direction, entryPrice, sl, tp1, tp2 })
+        const success = this.openPosition(direction, entryPrice, sl, tp1, tp2, score)
+        
+        if (success) {
+          this.log('info', '开仓成功', { direction, entryPrice })
+          if (notify) {
+            this.sendNotification(direction, score, entryPrice)
+          }
+          return true
+        } else {
+          this.log('warn', '开仓失败', { direction, entryPrice })
+          return false
+        }
+      } else {
+        this.log('info', '不满足开仓条件，跳过', { autoOpen, shouldOpen, hasPosition: !!state.currentPos })
+        return false
+      }
+    } catch (error) {
+      this.log('error', '处理信号时出错', { error: error.message, stack: error.stack })
+      return false
     }
   },
 

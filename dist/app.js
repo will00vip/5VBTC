@@ -2043,34 +2043,22 @@ const Simulator = new SimulatorEngine()
 // ═══════════════════════════════════════════════════════
 class VersionManager {
   constructor() {
-    this.currentVersion = 'v4-full-loop'
-    this.versionHistory = this.loadVersionHistory()
+    this.currentVersion = 'V1'
+    this.versionHistory = [] // 清空历史记录
     
     // 当前版本特性
     this.versionFeatures = {
-      'v1': '基础插针算法',
-      'v2': '推送修复 + 位置过滤',
-      'v3': '摆动高低点 + 大周期趋势 + 信号质量标注 + 回测统计',
-      'v4-full-loop': '完整闭环：推送+模拟交易+版本叠加+胜率追踪'
+      'V1': '基础版本：100分制评分系统'
     }
     
     // 版本优化路径（便于对比）
     this.optimizationPath = {
-      'v1': '基础形态识别',
-      'v2': '加入位置感知',
-      'v3': '加入趋势过滤+摆动点识别',
-      'v4-full-loop': '完整联动+胜率验证'
+      'V1': '基础版本：100分制评分系统'
     }
   }
   
   loadVersionHistory() {
-    try {
-      const saved = JSON.parse(localStorage.getItem('btc_versions') || '[]')
-      return Array.isArray(saved) ? saved : []
-    } catch(e) {
-      console.warn('[Version] 加载历史失败:', e)
-      return []
-    }
+    return [] // 始终返回空数组，清空历史记录
   }
   
   saveVersionHistory() {
@@ -2086,7 +2074,7 @@ class VersionManager {
       ...stats
     }
     
-    this.versionHistory.push(record)
+    this.versionHistory = [record] // 只保留当前版本
     this.saveVersionHistory()
     
     console.log(`[Version] 📍版本记录: ${version} - ${record.features}`)
@@ -2095,38 +2083,15 @@ class VersionManager {
   
   // 获取版本对比（最近2个版本）
   getVersionComparison() {
-    if (this.versionHistory.length < 2) return null
-    
-    const lastIdx = this.versionHistory.length - 1
-    const prev = this.versionHistory[lastIdx - 1]
-    const curr = this.versionHistory[lastIdx]
-    
-    return {
-      previous: prev,
-      current: curr,
-      comparison: {
-        versionChange: `${prev.version} → ${curr.version}`,
-        featureAdded: this.getAddedFeatures(prev, curr),
-        dateDiff: this.getDateDiff(prev.timestamp, curr.timestamp)
-      }
-    }
+    return null // 不提供版本对比
   }
   
   getAddedFeatures(prev, curr) {
-    const prevFeatures = prev.features.split('+').map(f => f.trim())
-    const currFeatures = curr.features.split('+').map(f => f.trim())
-    
-    return currFeatures.filter(f => !prevFeatures.includes(f))
+    return [] // 不提供特性对比
   }
   
   getDateDiff(timestamp1, timestamp2) {
-    const d1 = new Date(timestamp1)
-    const d2 = new Date(timestamp2)
-    const diffHours = Math.abs(d2 - d1) / (1000 * 60 * 60)
-    
-    if (diffHours < 1) return `${Math.round(diffHours * 60)}分钟`
-    if (diffHours < 24) return `${Math.round(diffHours)}小时`
-    return `${Math.round(diffHours / 24)}天`
+    return '0天' // 不提供时间对比
   }
   
   // 生成版本摘要（用于UI展示）
@@ -2134,8 +2099,8 @@ class VersionManager {
     return {
       current: this.currentVersion,
       feature: this.versionFeatures[this.currentVersion],
-      historyCount: this.versionHistory.length,
-      latestStats: this.versionHistory[this.versionHistory.length - 1] || {}
+      historyCount: 1,
+      latestStats: this.versionHistory[0] || {}
     }
   }
 }
