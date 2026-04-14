@@ -47,11 +47,9 @@ function getLastSignalInfo() {
   return _signalHistory;
 }
 
-// ★ 检查信号冷却 - 防止频繁交易
+// ★ 增强信号冷却机制 - 防止频繁交易和频繁切换方向
 function checkSignalCooldown(lastSignal, currentType) {
   var now = Date.now();
-  var cooldownPeriod = 10 * 60 * 1000; // 10分钟冷却期
-  var minInterval = 5 * 60 * 1000; // 同一方向信号至少间隔5分钟
   
   // 如果没有上次信号，允许生成
   if (!lastSignal || !lastSignal.lastSignalTime) {
@@ -59,17 +57,50 @@ function checkSignalCooldown(lastSignal, currentType) {
   }
   
   var timeSinceLastSignal = now - lastSignal.lastSignalTime;
+  var lastSignalType = lastSignal.lastSignalType;
+  var lastSignalScore = Math.abs(lastSignal.lastSignalScore || 0);
   
-  // 10分钟内不生成任何新信号
-  if (timeSinceLastSignal < cooldownPeriod) {
-    console.log('[信号冷却] 冷却期中，剩余:', Math.round((cooldownPeriod - timeSinceLastSignal) / 1000), '秒');
+  // 动态冷却时间设置
+  var baseCooldown = 10 * 60 * 1000; // 基础冷却期10分钟
+  var sameDirectionCooldown = 15 * 60 * 1000; // 同方向信号冷却15分钟
+  var oppositeDirectionCooldown = 30 * 60 * 1000; // 相反方向信号冷却30分钟
+  
+  // 根据上次信号分数调整冷却时间
+  if (lastSignalScore >= 85) {
+    // 高分信号需要更长的冷却时间，避免频繁高分信号干扰
+    baseCooldown *= 1.5;
+    sameDirectionCooldown *= 1.5;
+    oppositeDirectionCooldown *= 1.5;
+  } else if (lastSignalScore >= 70) {
+    // 中等分数信号适当延长冷却时间
+    baseCooldown *= 1.2;
+    sameDirectionCooldown *= 1.2;
+    oppositeDirectionCooldown *= 1.2;
+  }
+  
+  // 基础冷却期：任何信号都需要至少基础冷却时间
+  if (timeSinceLastSignal < baseCooldown) {
+    console.log('[信号冷却] 基础冷却期中，剩余:', Math.round((baseCooldown - timeSinceLastSignal) / 60000), '分钟');
     return false;
   }
   
-  // 如果方向相同，需要更长的间隔（15分钟）
-  if (currentType && currentType === lastSignal.lastSignalType) {
-    if (timeSinceLastSignal < 15 * 60 * 1000) {
-      console.log('[信号冷却] 同方向信号间隔太短');
+  // 同方向信号冷却：需要更长的间隔
+  if (currentType && currentType === lastSignalType) {
+    if (timeSinceLastSignal < sameDirectionCooldown) {
+      console.log('[信号冷却] 同方向信号间隔太短，需要至少', Math.round(sameDirectionCooldown / 60000), '分钟');
+      return false;
+    }
+  }
+  // 相反方向信号冷却：需要最长的间隔，避免频繁切换
+  else if (currentType && currentType !== lastSignalType) {
+    if (timeSinceLastSignal < oppositeDirectionCooldown) {
+      console.log('[信号冷却] 相反方向信号间隔太短，需要至少', Math.round(oppositeDirectionCooldown / 60000), '分钟');
+      return false;
+    }
+    
+    // 额外检查：如果上次是高分信号，需要更严格的相反方向冷却
+    if (lastSignalScore >= 75 && timeSinceLastSignal < oppositeDirectionCooldown * 1.5) {
+      console.log('[信号冷却] 高分信号后，相反方向信号需要更长的冷却期');
       return false;
     }
   }
@@ -93,6 +124,9 @@ function recordSignal(signalType, score) {
   if (absScore >= 60) {
     _signalHistory.lastPushScore = score;
     _signalHistory.lastPushTime = Date.now();
+    
+    // 推送级别：普通(60-84)、紧急(85+)
+    _signalHistory.pushLevel = absScore >= 85 ? 'urgent' : 'normal';
   }
   
   if (isReversal) {
@@ -248,9 +282,9 @@ function determineTrend(bars) {
   var ma20 = ema20[n];
   var ma60 = ema60[n];
   
-  // 计算趋势强度 (0-100)
-  var ma20Slope = (ema20[n] - ema20[n - 5]) / ema20[n - 5] * 100;
-  var ma60Slope = (ema60[n] - ema60[n - 10]) / ema60[n - 10] * 100;
+  // 计算趋势强度 (0-100) - 使用更长周期减少短期波动影响
+  var ma20Slope = (ema20[n] - ema20[Math.max(0, n - 10)]) / ema20[Math.max(0, n - 10)] * 100;
+  var ma60Slope = (ema60[n] - ema60[Math.max(0, n - 20)]) / ema60[Math.max(0, n - 20)] * 100;
   var priceToMA20 = (price - ma20) / ma20 * 100;
   var priceToMA60 = (price - ma60) / ma60 * 100;
   
@@ -271,29 +305,102 @@ function determineTrend(bars) {
   var ma20Break = Math.abs(priceToMA20) > 1.5;
   var ma60Break = Math.abs(priceToMA60) > 3;
   
-  // 变盘检测
-  if (goldenCross || deathCross || (ma20Break && ma60Break)) {
+  // 计算RSI和KDJ指标
+  var rsiValues = rsi(closes, 14);
+  var rsiCurrent = rsiValues[rsiValues.length - 1];
+  var rsiPrev = rsiValues[Math.max(0, rsiValues.length - 2)];
+  
+  // 获取高点和低点数据用于KDJ计算
+  var highs = bars.map(function(b) { return b.high; });
+  var lows = bars.map(function(b) { return b.low; });
+  var kdjValues = kdj(highs, lows, closes);
+  var jCurrent = kdjValues.J[kdjValues.J.length - 1];
+  var jPrev = kdjValues.J[Math.max(0, kdjValues.J.length - 2)];
+  
+  // 检查RSI超买超卖反转
+  var rsiReversal = false;
+  if ((rsiCurrent < 30 && rsiPrev >= 30) || (rsiCurrent > 70 && rsiPrev <= 70)) {
+    rsiReversal = true;
+  }
+  
+  // 检查KDJ金叉死叉
+  var kdjCross = false;
+  if (kdjValues.K[kdjValues.K.length - 1] > kdjValues.D[kdjValues.D.length - 1] && 
+      kdjValues.K[Math.max(0, kdjValues.K.length - 2)] <= kdjValues.D[Math.max(0, kdjValues.D.length - 2)]) {
+    kdjCross = true; // 金叉
+  } else if (kdjValues.K[kdjValues.K.length - 1] < kdjValues.D[kdjValues.D.length - 1] && 
+             kdjValues.K[Math.max(0, kdjValues.K.length - 2)] >= kdjValues.D[Math.max(0, kdjValues.D.length - 2)]) {
+    kdjCross = true; // 死叉
+  }
+  
+  // 检查动量反转
+  var momentumPrev = (closes[Math.max(0, n - 10)] - closes[Math.max(0, n - 20)]) / closes[Math.max(0, n - 20)] * 100;
+  var momentumReversal = Math.sign(momentum) !== Math.sign(momentumPrev) && Math.abs(momentum) > 1;
+  
+  // 变盘检测 - 增强版本
+  if (goldenCross || deathCross || (ma20Break && ma60Break) || rsiReversal || kdjCross || momentumReversal) {
     isTrendReversal = true;
-    reversalStrength = Math.min(100, 50 + Math.abs(momentum) * 2 + Math.abs(ma20Slope) * 5);
+    
+    // 计算变盘强度，考虑多个因素
+    var reversalFactors = 0;
+    if (goldenCross || deathCross) reversalFactors += 30;
+    if (ma20Break && ma60Break) reversalFactors += 25;
+    if (rsiReversal) reversalFactors += 20;
+    if (kdjCross) reversalFactors += 15;
+    if (momentumReversal) reversalFactors += 10;
+    
+    reversalStrength = Math.min(100, reversalFactors + Math.abs(momentum) * 1.5 + Math.abs(ma20Slope) * 3);
   }
   
   var trendStrength = 0;
   var trend = 'sideways';
   
-  // 强多头：价格在MA20之上，MA20在MA60之上，且都向上
-  if (price > ma20 && ma20 > ma60 && ma20Slope > 0.1) {
+  // 强多头：价格在MA20之上，MA20在MA60之上，且都向上，MA60斜率>0
+  if (price > ma20 && ma20 > ma60 && ma20Slope > 0.05 && ma60Slope > 0.02) {
     trend = 'up';
-    trendStrength = Math.min(100, 50 + Math.abs(ma20Slope) * 10 + Math.abs(priceToMA20) * 2);
+    trendStrength = Math.min(100, 60 + Math.abs(ma20Slope) * 8 + Math.abs(ma60Slope) * 4 + Math.abs(priceToMA20) * 1.5);
   }
-  // 强空头：价格在MA20之下，MA20在MA60之下，且都向下
-  else if (price < ma20 && ma20 < ma60 && ma20Slope < -0.1) {
+  // 强空头：价格在MA20之下，MA20在MA60之下，且都向下，MA60斜率<0
+  else if (price < ma20 && ma20 < ma60 && ma20Slope < -0.05 && ma60Slope < -0.02) {
     trend = 'down';
-    trendStrength = Math.min(100, 50 + Math.abs(ma20Slope) * 10 + Math.abs(priceToMA20) * 2);
+    trendStrength = Math.min(100, 60 + Math.abs(ma20Slope) * 8 + Math.abs(ma60Slope) * 4 + Math.abs(priceToMA20) * 1.5);
   }
-  // 震荡市
+  // 弱多头：价格在MA20之上，MA20在MA60之上，但MA60斜率不明确
+  else if (price > ma20 && ma20 > ma60) {
+    trend = 'up';
+    trendStrength = Math.min(100, 40 + Math.abs(ma20Slope) * 6 + Math.abs(priceToMA20) * 1);
+  }
+  // 弱空头：价格在MA20之下，MA20在MA60之下，但MA60斜率不明确
+  else if (price < ma20 && ma20 < ma60) {
+    trend = 'down';
+    trendStrength = Math.min(100, 40 + Math.abs(ma20Slope) * 6 + Math.abs(priceToMA20) * 1);
+  }
+  // 震荡市：价格在MA20和MA60之间，或者均线排列不明确
   else {
     trend = 'sideways';
-    trendStrength = Math.max(0, 30 - Math.abs(ma20Slope) * 5);
+    // 震荡市趋势强度较低，但考虑动量因素
+    trendStrength = Math.max(0, 25 - Math.abs(ma20Slope) * 3 + Math.abs(momentum) * 0.5);
+  }
+  
+  // 增加趋势强度的计算，考虑多周期因素
+  if (trend === 'up') {
+    // 价格远离MA20时增加趋势强度
+    if (priceToMA20 > 2) {
+      trendStrength = Math.min(100, trendStrength + 10);
+    }
+    // 短期和长期均线都向上时增加趋势强度
+    if (ma20Slope > 0 && ma60Slope > 0) {
+      trendStrength = Math.min(100, trendStrength + 15);
+    }
+  } else if (trend === 'down') {
+    // 价格远离MA20时增加趋势强度
+    if (priceToMA20 < -2) {
+      trendStrength = Math.min(100, trendStrength + 10);
+    }
+    // 短期和长期均线都向下时增加趋势强度
+    if (ma20Slope < 0 && ma60Slope < 0) {
+      trendStrength = Math.min(100, trendStrength + 15);
+    }
   }
   
   return {
@@ -341,10 +448,24 @@ function checkMultiPeriodResonance(currentBars, higherBars) {
   var nCurrent = currentCloses.length - 1;
   var nHigher = higherCloses.length - 1;
   
-  if (currentRSI[nCurrent] < 30 && higherRSI[nHigher] < 40) {
+  // 优化RSI极端值判断：考虑趋势和共振
+  var currentRSIVal = currentRSI[nCurrent];
+  var higherRSIVal = higherRSI[nHigher];
+  
+  // 超卖共振：当前周期超卖且高周期也处于相对低位
+  if (currentRSIVal < 35 && higherRSIVal < 45) {
     resonance.rsi_extreme = 'oversold';
-  } else if (currentRSI[nCurrent] > 70 && higherRSI[nHigher] > 60) {
+  } 
+  // 超买共振：当前周期超买且高周期也处于相对高位
+  else if (currentRSIVal > 65 && higherRSIVal > 55) {
     resonance.rsi_extreme = 'overbought';
+  }
+  // 趋势中的RSI共振：在趋势中允许更宽松的RSI范围
+  else if (currentTrend.trend === 'up' && currentRSIVal < 50 && higherRSIVal < 55) {
+    resonance.rsi_extreme = 'trend_oversold';
+  }
+  else if (currentTrend.trend === 'down' && currentRSIVal > 50 && higherRSIVal > 45) {
+    resonance.rsi_extreme = 'trend_overbought';
   }
   
   var currentMACD = macd(currentCloses);
@@ -420,21 +541,34 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
     });
   });
   
-  // 趋势强度评分 (0-17分)
+  // 趋势强度评分 (0-17分) - 优化版本
   var trend = determineTrend(bars);
   var trendScore = 0;
   var trendLabel = '';
-  if (trend.trend === 'up' || (signalType === 'short' && trend.trend === 'down')) {
-    // 根据趋势强度动态调整分数
-    trendScore = 10 + (trend.trendStrength / 100) * 7;
-    trendLabel = '强势' + (signalType === 'long' ? '多头' : '空头');
+  
+  // 检查信号方向与趋势方向是否一致
+  var isTrendAligned = (signalType === 'long' && trend.trend === 'up') || 
+                      (signalType === 'short' && trend.trend === 'down');
+  
+  if (isTrendAligned) {
+    // 趋势一致：根据趋势强度给予高分
+    trendScore = 8 + (trend.trendStrength / 100) * 9;
+    trendLabel = '趋势一致(' + trend.trend + ')';
   } else if (trend.trend === 'sideways') {
-    trendScore = 11;
-    trendLabel = '一般' + (signalType === 'long' ? '多头' : '空头');
+    // 震荡市：给予中等分数
+    trendScore = 10;
+    trendLabel = '震荡市';
   } else {
-    trendScore = 3;
-    trendLabel = '中性趋势';
+    // 趋势相反：给予低分，但考虑变盘可能性
+    if (trend.isTrendReversal && trend.reversalStrength >= 60) {
+      trendScore = 8; // 变盘信号较强时给予中等分数
+      trendLabel = '趋势反转信号';
+    } else {
+      trendScore = 3;
+      trendLabel = '趋势相反';
+    }
   }
+  
   score += trendScore;
   scoreDetails.trend.score = trendScore;
   scoreDetails.trend.items.push({
@@ -442,7 +576,8 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
     score: Math.round(trendScore),
     max: 17,
     trend: trend.trend,
-    strength: trend.trendStrength
+    strength: trend.trendStrength,
+    aligned: isTrendAligned
   });
   
   // 波动率评分 (0-17分)
@@ -631,8 +766,9 @@ async function detectSignal(interval) {
   var lowerShadow = Math.min(prevBar.open, prevBar.close) - prevBar.low;
   var upperShadow = prevBar.high - Math.max(prevBar.open, prevBar.close);
   
-  var isLongPin = lowerShadow >= body * 2 && prevBar.close > (prevBar.low + (prevBar.high - prevBar.low) * 0.5);
-  var isShortPin = upperShadow >= body * 2 && prevBar.close < (prevBar.high - (prevBar.high - prevBar.low) * 0.5);
+  // 增强插针检测：要求影线至少是实体的2.5倍，且价格在K线中上部
+  var isLongPin = lowerShadow >= body * 2.5 && prevBar.close > (prevBar.low + (prevBar.high - prevBar.low) * 0.6);
+  var isShortPin = upperShadow >= body * 2.5 && prevBar.close < (prevBar.high - (prevBar.high - prevBar.low) * 0.6);
   
   var c2Long = lastBar.low > prevBar.low && lastBar.close > lastBar.open;
   var c2Short = lastBar.high < prevBar.high && lastBar.close < lastBar.open;
@@ -664,7 +800,7 @@ async function detectSignal(interval) {
   // ★ 趋势过滤 - 避免震荡市频繁切换
   var trendInfo = determineTrend(bars);
   var trendDirection = trendInfo.trend; // 'up', 'down', 'sideways'
-  var trendStrength = trendInfo.strength || 0; // 0-100
+  var trendStrength = trendInfo.trendStrength || 0; // 0-100
   
   // 增强的信号检测条件
   var volumeConditions = {
@@ -672,25 +808,49 @@ async function detectSignal(interval) {
     short: prevBar.volume > getAverageVolume(bars, 20) * 1.2
   };
   
+  // 优化RSI条件：在趋势中允许更宽松的RSI范围
   var rsiConditions = {
-    long: rsiVal < 40,  // 超卖区域
-    short: rsiVal > 60  // 超买区域
+    long: rsiVal < 45 || (trendDirection === 'up' && rsiVal < 55),  // 超卖区域或上升趋势中相对低位
+    short: rsiVal > 55 || (trendDirection === 'down' && rsiVal > 45)  // 超买区域或下降趋势中相对高位
   };
   
+  // 优化布林带条件：允许价格在布林带附近，不要求完全突破
   var bollConditions = {
-    long: lastBar.close < bollLast.lower,
-    short: lastBar.close > bollLast.upper
+    long: lastBar.close < bollLast.middle || lastBar.close < bollLast.lower * 1.02,
+    short: lastBar.close > bollLast.middle || lastBar.close > bollLast.upper * 0.98
   };
   
-  // ★ 趋势一致性检查 - 只做与趋势方向一致的信号
+  // ★ 增强趋势一致性检查 - 基于趋势强度动态调整
   var trendAlignment = {
-    long: trendDirection === 'up' || trendDirection === 'sideways',
-    short: trendDirection === 'down' || trendDirection === 'sideways'
+    long: true,
+    short: true
   };
   
-  // ★ 信号冷却检查 - 防止频繁交易
-  var lastSignal = getLastSignalInfo();
-  var canGenerateSignal = checkSignalCooldown(lastSignal, signalType);
+  // 根据趋势强度动态调整信号允许范围
+  if (trendDirection === 'up') {
+    // 上升趋势中：根据趋势强度限制做空信号
+    if (trendStrength >= 70) {
+      trendAlignment.short = false; // 强上升趋势中完全禁止做空
+    } else if (trendStrength >= 50) {
+      trendAlignment.short = false; // 中等上升趋势中禁止做空
+    }
+    // 上升趋势中做多信号更容易通过
+  } else if (trendDirection === 'down') {
+    // 下降趋势中：根据趋势强度限制做多信号
+    if (trendStrength >= 70) {
+      trendAlignment.long = false; // 强下降趋势中完全禁止做多
+    } else if (trendStrength >= 50) {
+      trendAlignment.long = false; // 中等下降趋势中禁止做多
+    }
+    // 下降趋势中做空信号更容易通过
+  } else {
+    // 震荡市中：根据趋势强度调整信号允许范围
+    if (trendStrength >= 60) {
+      // 强震荡市中，只允许与短期动量方向一致的信号
+      trendAlignment.long = momentum > 0;
+      trendAlignment.short = momentum < 0;
+    }
+  }
   
   // ★ 增强的信号质量过滤
   var signalQuality = {
@@ -699,26 +859,30 @@ async function detectSignal(interval) {
       rsi: rsiConditions.long,
       boll: bollConditions.long,
       trend: trendAlignment.long,
-      cooldown: canGenerateSignal,
       // 额外条件：价格在MA上方
       ma: lastBar.close > calculateMA(bars, 20),
       // 额外条件：MACD金叉
       macd: macdBar > 0 && macdData.dif[n] > macdData.dea[n],
       // 变盘特殊条件
-      reversal: !trendInfo.isTrendReversal || (trendInfo.isTrendReversal && trendInfo.goldenCross)
+      reversal: !trendInfo.isTrendReversal || (trendInfo.isTrendReversal && trendInfo.goldenCross),
+      // 额外条件：趋势强度
+      trendStrength: trendDirection === 'up' || (trendDirection === 'sideways' && trendStrength < 60)
     },
     short: {
       volume: volumeConditions.short,
       rsi: rsiConditions.short,
       boll: bollConditions.short,
       trend: trendAlignment.short,
-      cooldown: canGenerateSignal,
       // 额外条件：价格在MA下方
       ma: lastBar.close < calculateMA(bars, 20),
       // 额外条件：MACD死叉
       macd: macdBar < 0 && macdData.dif[n] < macdData.dea[n],
       // 变盘特殊条件
-      reversal: !trendInfo.isTrendReversal || (trendInfo.isTrendReversal && trendInfo.deathCross)
+      reversal: !trendInfo.isTrendReversal || (trendInfo.isTrendReversal && trendInfo.deathCross),
+      // 额外条件：趋势强度
+      trendStrength: trendDirection === 'down' || (trendDirection === 'sideways' && trendStrength < 60),
+      // 额外条件：在强上升趋势中禁止做空
+      noStrongUpTrend: !(trendDirection === 'up' && trendStrength > 60)
     }
   };
   
@@ -734,12 +898,26 @@ async function detectSignal(interval) {
   
   // 增强的做多信号条件（添加更多质量过滤）
   if (isLongPin && c2Long && c4Long && (longQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.goldenCross && longQualityScore >= 60))) {
-    signalType = 'long';
+    // 检查信号冷却
+    var lastSignal = getLastSignalInfo();
+    var canGenerateSignal = checkSignalCooldown(lastSignal, 'long');
+    if (canGenerateSignal) {
+      signalType = 'long';
+    } else {
+      console.log('[信号冷却] 做多信号被冷却限制');
+    }
   }
   
   // 增强的做空信号条件（添加更多质量过滤）
   if (isShortPin && c2Short && c4Short && (shortQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.deathCross && shortQualityScore >= 60))) {
-    signalType = 'short';
+    // 检查信号冷却
+    var lastSignal = getLastSignalInfo();
+    var canGenerateSignal = checkSignalCooldown(lastSignal, 'short');
+    if (canGenerateSignal) {
+      signalType = 'short';
+    } else {
+      console.log('[信号冷却] 做空信号被冷却限制');
+    }
   }
   
   var longConditions = [
@@ -790,8 +968,6 @@ async function detectSignal(interval) {
       CONFIG.ACCOUNT_BALANCE || 10000
     ) : null;
   
-  var trendInfo = determineTrend(bars);
-  
   var result = {
     type: signalType,
     signalStrength: signalStrength,
@@ -815,7 +991,7 @@ async function detectSignal(interval) {
     price: trendInfo.price,
     ma20: trendInfo.ma20,
     ma60: trendInfo.ma60,
-    trendStrength: trendInfo.strength, // 趋势强度
+    trendStrength: trendInfo.trendStrength, // 趋势强度
     
     macdBar: macdBar, macdPrev: macdPrev,
     dif: macdData.dif[n], dea: macdData.dea[n],

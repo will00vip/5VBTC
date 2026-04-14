@@ -2673,6 +2673,50 @@ body {
   transform: translateY(-2px);
 }
 
+/* 新模块信息样式 */
+.trade-v1-modules {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.module-card {
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.module-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 12px;
+}
+
+.module-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.module-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.module-label {
+  color: #94a3b8;
+}
+
+.module-value {
+  font-weight: 500;
+  color: #e2e8f0;
+}
+
 .bear-btn:active {
   transform: translateY(0);
 }

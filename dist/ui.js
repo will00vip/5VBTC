@@ -500,21 +500,26 @@ function showReversalAlert(reversalData) {
     
     const directionText = reversalData.type === 'long' ? '做多' : '做空';
     const lastDirectionText = reversalData.lastType === 'long' ? '做多' : '做空';
+    const directionIcon = reversalData.type === 'long' ? '📈' : '📉';
+    const lastDirectionIcon = reversalData.lastType === 'long' ? '📈' : '📉';
+    const score = Math.abs(reversalData.score);
+    const scoreStars = '⭐'.repeat(Math.min(Math.ceil(score / 20), 5));
     
     alert.innerHTML = `
       <div class="reversal-header">
-        <span class="reversal-icon">⚠️</span>
+        <span class="reversal-icon">🚨</span>
         <span class="reversal-title">变盘信号</span>
+        <span class="reversal-priority">紧急</span>
         <button class="reversal-close">×</button>
       </div>
       <div class="reversal-body">
         <div class="reversal-info">
           <span class="info-label">方向变化:</span>
-          <span class="info-value">${lastDirectionText} → ${directionText}</span>
+          <span class="info-value">${lastDirectionIcon} ${lastDirectionText} → ${directionIcon} ${directionText}</span>
         </div>
         <div class="reversal-info">
           <span class="info-label">信号强度:</span>
-          <span class="info-value">${Math.abs(reversalData.score)}分</span>
+          <span class="info-value">${score}分 ${scoreStars}</span>
         </div>
         <div class="reversal-info">
           <span class="info-label">时间:</span>
@@ -523,16 +528,21 @@ function showReversalAlert(reversalData) {
         <div class="reversal-tips">
           <strong>操作建议:</strong>
           <ul>
-            <li>立即检查当前持仓</li>
-            <li>设置止损保护</li>
-            <li>准备反向开仓</li>
-            <li>关注成交量变化</li>
+            <li>🚨 立即检查当前持仓</li>
+            <li>🛡️ 设置止损保护</li>
+            <li>📊 准备反向开仓</li>
+            <li>📈 关注成交量变化</li>
+            <li>⏰ 密切关注市场动向</li>
           </ul>
+        </div>
+        <div class="reversal-warning">
+          <strong>⚠️ 重要提醒:</strong> 变盘信号可能带来较大的价格波动，请谨慎操作！
         </div>
       </div>
       <div class="reversal-actions">
-        <button class="reversal-action-btn" onclick="window.location.href='#trade'">交易面板</button>
+        <button class="reversal-action-btn primary" onclick="window.location.href='#trade'">交易面板</button>
         <button class="reversal-action-btn" onclick="window.location.href='#chart'">查看图表</button>
+        <button class="reversal-action-btn" onclick="alert.remove()">关闭</button>
       </div>
     `;
     
@@ -549,6 +559,12 @@ function showReversalAlert(reversalData) {
       });
     }
     
+    // 添加动画效果
+    setTimeout(() => {
+      alert.style.opacity = '1';
+      alert.style.transform = 'translateY(0)';
+    }, 100);
+    
     console.log('[变盘提醒] 特别提醒已显示');
   } catch (e) {
     console.warn('[变盘提醒] 显示失败:', e.message);
@@ -558,8 +574,10 @@ function showReversalAlert(reversalData) {
 // 推送变盘通知
 function pushReversalNotification(reversalData) {
   const directionText = reversalData.type === 'long' ? '做多' : '做空';
+  const lastDirectionText = reversalData.lastType === 'long' ? '做多' : '做空';
   const score = Math.abs(reversalData.score);
   const price = window._wsLastBar?.close || 0;
+  const scoreStars = '⭐'.repeat(Math.min(Math.ceil(score / 20), 5));
   
   // 创建变盘信号对象
   const reversalSignal = {
@@ -567,8 +585,29 @@ function pushReversalNotification(reversalData) {
     signalStrength: reversalData.score,
     signalConfidence: reversalData.score,
     trend: reversalData.type === 'long' ? 'up' : 'down',
-    bars: window._wsLastBar ? [window._wsLastBar] : []
+    bars: window._wsLastBar ? [window._wsLastBar] : [],
+    isReversal: true,
+    lastType: reversalData.lastType
   };
+  
+  // 构建变盘通知标题和内容
+  const title = `🚨 变盘信号：${lastDirectionText} → ${directionText} ${score}分 ${scoreStars}`;
+  const content = `
+📊 变盘详情：
+方向变化：${lastDirectionText} → ${directionText}
+信号强度：${score}分 ${scoreStars}
+当前价格：${price?.toFixed?.(2) || price}
+时间：${new Date(reversalData.timestamp).toLocaleString()}
+
+⚠️ 重要提醒：
+变盘信号可能带来较大的价格波动，请立即检查持仓并设置止损保护！
+
+操作建议：
+1. 立即检查当前持仓
+2. 设置止损保护
+3. 准备反向开仓
+4. 关注成交量变化
+5. 密切关注市场动向`;
   
   // 使用推送系统发送变盘通知
   pushSystem.pushSignal(
@@ -577,6 +616,16 @@ function pushReversalNotification(reversalData) {
     reversalData.score,
     price
   );
+  
+  // 发送PushDeer通知
+  const pushDeerKey = localStorage.getItem('pushDeerKey') || 'PDU40148TxZdiIPWokKNhnK1UwmX6RiPuefuDi80f';
+  if (pushDeerKey) {
+    fetch('https://api2.pushdeer.com/message/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `pushkey=${pushDeerKey}&text=${title}&desp=${content}`,
+    }).catch(e => console.warn('[PushDeer]:', e.message));
+  }
 }
 
 
@@ -832,19 +881,31 @@ function _initChartWhenReady(retryCount) {
 }
 
 function _doInitChart() {
-  if (!window.LWChart) {
-    console.error('[Chart] LWChart 未加载，可能 canvas-chart.js 加载失败')
+  if (!window.CanvasChart) {
+    console.error('[Chart] CanvasChart 未加载，可能 canvas-chart.js 加载失败')
     _showChartError('图表库加载失败，请重启应用')
     return
   }
   try {
-    window.LWChart.initLWChart('lwChartContainer')
-    // 延迟一帧，等 app.js 的 fetchKlines 注册完毕
-    setTimeout(() => {
-      window.LWChart.loadChartData(currentInterval, 200).catch(e => {
-        console.warn('[Chart] 数据加载失败:', e)
-        _showChartError('数据加载失败: ' + e.message)
-      })
+    window.CanvasChart.init('lwChartContainer')
+    // 延迟一帧，等数据准备完毕
+    setTimeout(async () => {
+      try {
+        if (window.fetchKlines) {
+          const bars = await window.fetchKlines(currentInterval, 200)
+          if (bars && bars.length > 0) {
+            window.CanvasChart.setData(bars)
+            console.log('[Chart] 数据加载成功，共', bars.length, '根K线')
+          } else {
+            _showChartError('数据加载失败：无数据')
+          }
+        } else {
+          _showChartError('数据加载失败：fetchKlines 未定义')
+        }
+      } catch (e) {
+        console.error('[Chart] 数据加载异常:', e)
+        _showChartError('数据加载异常: ' + e.message)
+      }
     }, 100)
   } catch(e) {
     console.error('[Chart] 初始化异常:', e)
@@ -1041,11 +1102,15 @@ function processSignalResult(result) {
     try {
       if (window.Simulator && result.bars) {
         const price = result.bars[result.bars.length - 1].close
-        const pos = window.Simulator.openPosition(result, price)
-        if (pos) {
-          console.log('[Sim] 自动开仓成功')
-          updateSimulatorPanel()
-        }
+        // 使用新的executeTrade方法（带随机间隔和委托拆分）
+        window.Simulator.executeTrade(result, price).then(pos => {
+          if (pos) {
+            console.log('[Sim] 自动交易执行成功')
+            updateSimulatorPanel()
+          }
+        }).catch(e => {
+          console.warn('[Sim] 交易执行失败:', e)
+        })
       }
     } catch(e) { console.warn('[Sim] 开仓失败:', e) }
   }
@@ -1615,7 +1680,7 @@ function _pushNotification(result) {
     }
     
     // 确定方向文本
-    let directionText, qualityTag
+    let directionText, qualityTag, specialHint
     const scoreStars = '⭐'.repeat(Math.min(result.signalStrength || 3, 5))
     const price = result.bars ? result.bars[result.bars.length - 1].close : '--'
 
@@ -1625,10 +1690,19 @@ function _pushNotification(result) {
       directionText = isLong ? '💚 做多' : '❤️ 做空'
       
       // ── 信号质量标注（支持正负数）──
-      if (absScore >= 85) qualityTag = '🔥强烈信号'
-      else if (absScore >= 70) qualityTag = '✅优质信号'
-      else if (absScore >= 60) qualityTag = '⚠️基础信号'
-      else qualityTag = '信号'
+      if (absScore >= 85) {
+        qualityTag = '🔥强烈信号'
+        specialHint = '\n🚨 紧急信号：建议立即关注并准备操作！'
+      } else if (absScore >= 70) {
+        qualityTag = '✅优质信号'
+        specialHint = ''
+      } else if (absScore >= 60) {
+        qualityTag = '⚠️基础信号'
+        specialHint = ''
+      } else {
+        qualityTag = '信号'
+        specialHint = ''
+      }
     } else {
       // 无信号：根据趋势显示震荡状态
       if (result.trend === 'strong_bull' || result.trend === 'bull') {
@@ -1641,6 +1715,7 @@ function _pushNotification(result) {
         directionText = '💙 震荡趋势'
         qualityTag = '↔震荡信号'
       }
+      specialHint = ''
     }
     
     // ── 趋势方向提示 ──
@@ -1675,7 +1750,7 @@ function _pushNotification(result) {
     }
     
     const content = `
-${trendTag}${weakWarning}
+${trendTag}${weakWarning}${specialHint}
 价格: ${price?.toFixed?.(2) || price}${tradeInfo}
 支撑位: ${result.nearSupport ? `✅(${result.swingLowCount}个)` : '❌远离'}
 阻力位: ${result.nearResistance ? `✅(${result.swingHighCount}个)` : '❌远离'}
@@ -4199,7 +4274,9 @@ function filterHistory() {
 
 window.switchTab = switchTab
 window.filterHistory = filterHistory
-window.markRecord = markRecord
+window.markRecord = function(id) {
+  console.log('标记记录:', id)
+}
 window.deleteRecord = deleteRecord
 window.renderHistoryPage = renderHistoryPage
 window.runSimulation = runSimulation
@@ -4251,6 +4328,30 @@ function updateSimulatorPanel() {
   ].filter(Boolean).join(' | ') || '--'
   
   document.getElementById('simScoreStat').textContent = scoreSummary
+  
+  // 更新新模块信息
+  // 最大回撤保护
+  const mdp = window.Simulator.maxDrawdownProtection
+  if (mdp) {
+    document.getElementById('currentDrawdown').textContent = `${mdp.currentDrawdown.toFixed(1)}%`
+    const isPaused = Date.now() < mdp.pausedUntil
+    document.getElementById('drawdownStatus').textContent = isPaused ? '暂停中' : '正常'
+    document.getElementById('drawdownStatus').style.color = isPaused ? '#ef4444' : '#10b981'
+  }
+  
+  // 交易执行
+  const te = window.Simulator.tradeExecution
+  if (te) {
+    document.getElementById('randomInterval').textContent = te.randomOrderInterval.enabled ? '启用' : '禁用'
+    document.getElementById('orderSplit').textContent = te.orderSplit.enabled ? '启用' : '禁用'
+  }
+  
+  // 版本信息
+  const versionInfo = window.Simulator.getVersionInfo()
+  if (versionInfo) {
+    document.getElementById('currentVersion').textContent = versionInfo.currentVersion
+    document.getElementById('tradeCount').textContent = stats.totalTrades
+  }
   
   console.log('[Sim] 面板已更新:', stats)
 }
@@ -5344,12 +5445,16 @@ const AutoTrade = {
   // 添加信号到队列
   addToQueue(signal) {
     const queue = this.getQueue()
+    console.log('[AutoTrade] 添加信号到队列:', signal)
+    
     // 去重：避免相同信号重复添加
     const isDuplicate = queue.some(q => 
       q.direction === signal.direction && 
       q.score === signal.score && 
       Math.abs(q.entryPrice - signal.entryPrice) < 10
     )
+    
+    console.log('[AutoTrade] 信号去重检查:', { isDuplicate, queueLength: queue.length })
     
     if (!isDuplicate) {
       queue.push({
@@ -5359,7 +5464,7 @@ const AutoTrade = {
         status: 'pending'
       })
       this.saveQueue(queue)
-      console.log('[AutoTrade] 信号已添加到队列:', signal.direction, signal.score)
+      console.log('[AutoTrade] 信号已添加到队列:', signal.direction, signal.score, '队列长度:', queue.length)
       this.processQueue()
     } else {
       console.log('[AutoTrade] 信号已存在于队列中，跳过')
@@ -5371,6 +5476,8 @@ const AutoTrade = {
     const queue = this.getQueue()
     const pendingSignals = queue.filter(s => s.status === 'pending')
     
+    console.log('[AutoTrade] 处理信号队列:', { queueLength: queue.length, pendingCount: pendingSignals.length })
+    
     if (pendingSignals.length === 0) {
       console.log('[AutoTrade] 信号队列为空')
       return
@@ -5381,7 +5488,7 @@ const AutoTrade = {
     
     for (const signal of pendingSignals) {
       try {
-        console.log('[AutoTrade] 处理队列中的信号:', signal.direction, signal.score)
+        console.log('[AutoTrade] 处理队列中的信号:', signal)
         const success = this._processSignal(signal.score, signal.direction, signal.entryPrice, signal.sl, signal.tp1, signal.tp2)
         
         // 更新信号状态
@@ -5389,8 +5496,9 @@ const AutoTrade = {
           q.id === signal.id ? { ...q, status: success ? 'processed' : 'failed' } : q
         )
         this.saveQueue(updatedQueue)
+        console.log('[AutoTrade] 信号处理结果:', { signalId: signal.id, success })
       } catch (error) {
-        console.error('[AutoTrade] 处理队列信号时出错:', error.message)
+        console.error('[AutoTrade] 处理队列信号时出错:', error)
         // 标记为失败，稍后重试
         const updatedQueue = queue.map(q => 
           q.id === signal.id ? { ...q, status: 'failed', error: error.message } : q
@@ -5907,29 +6015,36 @@ const AutoTrade = {
   // 处理信号
   onSignal(score, direction, entryPrice, sl, tp1, tp2) {
     try {
+      console.log('[AutoTrade] 收到信号:', { score, direction, entryPrice, sl, tp1, tp2 })
+      
       // 参数校验
       if (!score || !direction || !entryPrice || !sl || !tp1 || !tp2) {
         this.log('error', '信号参数不完整', { score, direction, entryPrice, sl, tp1, tp2 })
+        console.error('[AutoTrade] 信号参数不完整:', { score, direction, entryPrice, sl, tp1, tp2 })
         return
       }
       
       // 验证参数有效性
       if (typeof score !== 'number' || score === 0) {
         this.log('error', '信号分数无效', { score })
+        console.error('[AutoTrade] 信号分数无效:', { score })
         return
       }
       
       if (direction !== 'long' && direction !== 'short') {
         this.log('error', '信号方向无效', { direction })
+        console.error('[AutoTrade] 信号方向无效:', { direction })
         return
       }
       
       if (typeof entryPrice !== 'number' || entryPrice <= 0) {
         this.log('error', '入场价格无效', { entryPrice })
+        console.error('[AutoTrade] 入场价格无效:', { entryPrice })
         return
       }
       
       this.log('info', '收到信号', { direction, score, entryPrice, sl, tp1, tp2 })
+      console.log('[AutoTrade] 信号参数验证通过，准备添加到队列')
       
       // 先将信号添加到队列
       this.addToQueue({
@@ -5942,6 +6057,7 @@ const AutoTrade = {
       })
     } catch (error) {
       this.log('error', '处理信号时出错', { error: error.message, stack: error.stack })
+      console.error('[AutoTrade] 处理信号时出错:', error)
     }
   },
   

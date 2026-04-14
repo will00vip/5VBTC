@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.btcai.radar.v2">
+    package="com.btcai.autotrade">
 
     <application
         android:allowBackup="true"
@@ -13,7 +13,7 @@
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
-            android:name="com.btcai.radar.v2.MainActivity"
+            android:name="com.btcai.autotrade.MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask">
@@ -35,14 +35,14 @@
 
         <!-- ★ 信号详情页面 -->
         <activity
-            android:name="com.btcai.radar.v2.SignalDetailActivity"
+            android:name="com.btcai.autotrade.SignalDetailActivity"
             android:label="信号详情"
             android:theme="@style/AppTheme.NoActionBar"
-            android:parentActivityName="com.btcai.radar.v2.MainActivity"
+            android:parentActivityName="com.btcai.autotrade.MainActivity"
             android:launchMode="singleTop">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
-                android:value="com.btcai.radar.v2.MainActivity" />
+                android:value="com.btcai.autotrade.MainActivity" />
         </activity>
 
         <provider
@@ -57,14 +57,14 @@
 
         <!-- ★ 后台信号监控服务 -->
         <service
-            android:name="com.btcai.radar.v2.SignalMonitorService"
+            android:name="com.btcai.autotrade.SignalMonitorService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
         <!-- ★ 自启动接收器 -->
         <receiver
-            android:name="com.btcai.radar.v2.BootReceiver"
+            android:name="com.btcai.autotrade.BootReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
@@ -75,14 +75,14 @@
 
         <!-- ★ 服务保活接收器 -->
         <receiver
-            android:name="com.btcai.radar.v2.ServiceRestartReceiver"
+            android:name="com.btcai.autotrade.ServiceRestartReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.REBOOT" />
-                <action android:name="com.btcai.radar.RESTART_SERVICE" />
+                <action android:name="com.btcai.autotrade.RESTART_SERVICE" />
             </intent-filter>
         </receiver>
 

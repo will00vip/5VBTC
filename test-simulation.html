@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模拟交易测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>模拟交易测试</h1>
+        <p>使用1000 U模拟资金运行50笔交易，统计胜率是否达标65%。</p>
+        <button onclick="runSimulationTest()">开始测试</button>
+        <div id="output"></div>
+    </div>
+
+    <!-- 加载交易系统代码 -->
+    <script src="dist/app.js"></script>
+    <script src="dist/ui.js"></script>
+
+    <script>
+        // 确保必要的全局函数存在
+        if (!window.markRecord) {
+            window.markRecord = function(id) {
+                console.log('标记记录:', id);
+            };
+        }
+        
+        if (!window.deleteRecord) {
+            window.deleteRecord = function(id) {
+                console.log('删除记录:', id);
+            };
+        }
+
+        // 重定向console.log到页面
+        const output = document.getElementById('output');
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                }
+                return arg;
+            }).join(' ');
+            if (output) {
+                output.innerHTML += message + '\n';
+                output.scrollTop = output.scrollHeight;
+            }
+        };
+
+        // 运行模拟交易测试
+        async function runSimulationTest() {
+            if (output) {
+                output.innerHTML = '开始模拟交易测试...\n';
+            }
+            try {
+                if (window.Simulator && window.Simulator.runSimulationTest) {
+                    const stats = await window.Simulator.runSimulationTest();
+                    if (output) {
+                        output.innerHTML += '\n测试完成！\n';
+                        output.innerHTML += `交易总笔数: ${stats.totalTrades}\n`;
+                        output.innerHTML += `胜率: ${stats.winRate}%\n`;
+                        output.innerHTML += `总盈亏: $${stats.totalPnL}\n`;
+                        output.innerHTML += `总权益: $${stats.equity}\n`;
+                        if (stats.winRate >= 65) {
+                            output.innerHTML += '✅ 胜率达标65%，可以进入下一步\n';
+                        } else {
+                            output.innerHTML += '❌ 胜率未达标65%，需要优化策略\n';
+                        }
+                    }
+                } else {
+                    throw new Error('Simulator not initialized');
+                }
+            } catch (error) {
+                if (output) {
+                    output.innerHTML += '测试失败: ' + error.message + '\n';
+                }
+                console.error(error);
+            }
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('页面加载完成，模拟交易系统已初始化');
+        });
+    </script>
+</body>
+</html>

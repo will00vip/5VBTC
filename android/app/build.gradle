@@ -3,11 +3,11 @@ apply plugin: 'com.android.application'
 android {
     compileSdkVersion rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.btcai.radar.v2"
+        applicationId "com.btcai.autotrade"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "V1-FOR-2.0-20260406"
+        versionCode 1
+        versionName "V1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -24,7 +24,7 @@ android {
     sourceSets {
         main {
             java {
-                exclude '**/com/btcai/radar/*.java'
+                exclude '**/com/btcai/radar/**'
             }
         }
     }
