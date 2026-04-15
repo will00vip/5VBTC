@@ -777,6 +777,10 @@ async function detectSignal(interval) {
   var highs = bars.map(function(b) { return b.high; });
   var lows = bars.map(function(b) { return b.low; });
   
+  // 计算动量指标
+  var n = closes.length - 1;
+  var momentum = (closes[n] - closes[Math.max(0, n - 10)]) / closes[Math.max(0, n - 10)] * 100;
+  
   var macdData = macd(closes);
   var kdjData = kdj(highs, lows, closes);
   var rsiArr = rsi(closes);
@@ -952,6 +956,18 @@ async function detectSignal(interval) {
     } else {
       // 做空：-100到0分
       signalStrength = Math.round(-rawScore);
+    }
+    
+    // ★ 横盘整理特殊处理：在横盘整理时降低信号评分
+    if (trendInfo.trend === 'sideways') {
+      // 横盘整理时降低信号评分
+      var sidewaysReduction = 30; // 横盘整理时降低30分
+      if (signalType === 'long') {
+        signalStrength = Math.max(0, signalStrength - sidewaysReduction);
+      } else {
+        signalStrength = Math.min(0, signalStrength + sidewaysReduction);
+      }
+      console.log('[横盘整理] 信号评分已调整:', signalStrength);
     }
     
     // ★ 记录信号生成

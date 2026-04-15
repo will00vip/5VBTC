@@ -1679,6 +1679,12 @@ function _pushNotification(result) {
       return
     }
     
+    // ★ 横盘整理特殊处理：在横盘整理时不推送高分信号
+    if (result.trend === 'sideways' && absScore >= 60) {
+      console.log('横盘整理时不推送高分信号，分数:', score)
+      return
+    }
+    
     // 确定方向文本
     let directionText, qualityTag, specialHint
     const scoreStars = '⭐'.repeat(Math.min(result.signalStrength || 3, 5))
