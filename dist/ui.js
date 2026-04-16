@@ -1423,11 +1423,11 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
   const signalScore = displayScore
   const absSignalScore = Math.abs(signalScore)
   
-  // ★ 60分以上才显示信号
-  const hasStrongSignal = displayHasSignal && absSignalScore >= 60
+  // ★ 85分以上才显示做多做空信号
+  const hasStrongSignal = displayHasSignal && absSignalScore >= 85
   
   if (hasStrongSignal) {
-    // ★ 60分以上：显示信号和倒计时
+    // ★ 85分以上：显示做多做空信号和3分钟倒计时
     const isLong = signalScore > 0
     
     // 计算圆环进度
@@ -1438,24 +1438,24 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     if (isLong) {
       circle.style.stroke = '#10b981'  // 绿色做多
       scoreText.style.color = '#10b981'
-      scoreText.textContent = '+' + absSignalScore
+      scoreText.textContent = '做多'
       if (statusText) statusText.textContent = `做多信号 ${absSignalScore}分 🐂`
     } else {
       circle.style.stroke = '#ef4444'  // 红色做空
       scoreText.style.color = '#ef4444'
-      scoreText.textContent = '-' + absSignalScore
+      scoreText.textContent = '做空'
       if (statusText) statusText.textContent = `做空信号 ${absSignalScore}分 🐻`
     }
     
     updateScoreBarIndicator(signalScore, true, isLong ? 'long' : 'short')
     
-    // 显示倒计时（如果有）
+    // 显示3分钟倒计时
     if (window.showSignalCountdown) {
-      window.showSignalCountdown(signalScore)
+      window.showSignalCountdown(signalScore, 3 * 60 * 1000) // 3分钟倒计时
     }
     
   } else {
-    // ★ 无信号或信号强度不足：显示偏多/偏空/震荡状态
+    // ★ 85分以下：显示偏多/偏空/观察中状态
     
     // 处理不同的趋势值
     let normalizedTrend = trend;
@@ -1466,9 +1466,9 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     }
     
     // 根据趋势显示不同状态
-    let statusLabel = '震荡'
+    let statusLabel = '观察中'
     let statusColor = '#f59e0b'
-    let displayText = '震荡'
+    let displayText = '观察中'
     let indicatorValue = 0
     
     if (normalizedTrend === 'up') {
@@ -1482,9 +1482,9 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
       displayText = '偏空'
       indicatorValue = -30
     } else {
-      statusLabel = '震荡'
+      statusLabel = '观察中'
       statusColor = '#f59e0b'
-      displayText = '震荡'
+      displayText = '观察中'
       indicatorValue = 0
     }
     
@@ -1497,7 +1497,7 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     
     // 显示状态文本
     scoreText.textContent = displayText
-    if (statusText) statusText.textContent = statusLabel + ' - 等待高质信号'
+    if (statusText) statusText.textContent = statusLabel + ' - 等待85分以上信号'
     
     // 隐藏倒计时
     const countdownEl = document.getElementById('signalCountdown')
