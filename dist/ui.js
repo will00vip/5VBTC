@@ -1690,25 +1690,25 @@ function _pushNotification(result) {
     const scoreStars = '⭐'.repeat(Math.min(result.signalStrength || 3, 5))
     const price = result.bars ? result.bars[result.bars.length - 1].close : '--'
 
-    if (result.type) {
-      // 有信号：做多或做空
+    if (result.type && absScore >= 85) {
+      // 85分以上：推送做多或做空信号
       const isLong = result.type === 'long'
       directionText = isLong ? '💚 做多' : '❤️ 做空'
-      
-      // ── 信号质量标注（支持正负数）──
-      if (absScore >= 85) {
-        qualityTag = '🔥强烈信号'
-        specialHint = '\n🚨 紧急信号：建议立即关注并准备操作！'
-      } else if (absScore >= 70) {
-        qualityTag = '✅优质信号'
-        specialHint = ''
-      } else if (absScore >= 60) {
-        qualityTag = '⚠️基础信号'
-        specialHint = ''
+      qualityTag = '🔥强烈信号'
+      specialHint = '\n🚨 紧急信号：建议立即关注并准备操作！'
+    } else if (absScore >= 60) {
+      // 60-84分：只推送观察状态，不推送做多做空
+      if (score > 0) {
+        directionText = '💚 偏多观察'
+        qualityTag = '📈观察信号'
+      } else if (score < 0) {
+        directionText = '❤️ 偏空观察'
+        qualityTag = '📉观察信号'
       } else {
-        qualityTag = '信号'
-        specialHint = ''
+        directionText = '💙 观察中'
+        qualityTag = '↔观察信号'
       }
+      specialHint = '\n⚠️ 等待85分以上信号再操作'
     } else {
       // 无信号：根据趋势显示震荡状态
       if (result.trend === 'strong_bull' || result.trend === 'bull') {
