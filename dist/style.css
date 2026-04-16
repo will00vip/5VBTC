@@ -251,91 +251,41 @@ body {
 /* 评分圆盘 + 猫咪区域（重新设计） */
 .score-main-section {
   display: flex;
-  gap: 16px;
+  justify-content: center;
+  align-items: center;
   margin: 8px 0;
-  padding: 12px 16px;
+  padding: 20px 16px;
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border-radius: 16px;
   border: 1px solid rgba(255,255,255,0.08);
 }
 
-/* 左侧：圆盘 */
-.score-left {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.score-dial-small {
-  width: 120px;
-  height: 120px;
-}
-
-.score-dial-small .dial-svg {
-  width: 100%;
-  height: 100%;
-}
-
-.score-dial-small .dial-score {
-  font-size: 28px;
-  font-weight: bold;
-  fill: #fff;
-}
-
-/* 评分刻度尺 - 精简版 */
-.score-ruler {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 0;
-}
-
-/* 评分圆环标注 - 精简无重叠 */
-.dial-annotations {
-  display: none;  /* 已删除，刻度尺足够清晰 */
-}
-
-.dial-ann {
-  display: none;  /* 隐藏老的标注，由刻度尺代替 */
-}
-
-/* ★ 泡泡说话区域 - 黄色自由风格 ★ */
-.bubble-speech-box {
+/* 中间：表情和状态文字 */
+.score-center {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 16px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  position: relative;
-  transition: all 0.3s ease;
-  flex: 1;
-}
-
-.bubble-speech-box.long,
-.bubble-speech-box.short,
-.bubble-speech-box.warning {
-  background: transparent;
-  border: none;
+  gap: 16px;
+  width: 100%;
 }
 
 /* 泡泡角色 - 做大 */
 .bubble-character {
   position: relative;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 
 .bubble-body {
-  width: 72px;
-  height: 68px;
+  width: 100px;
+  height: 90px;
   background: linear-gradient(135deg, #fde68a 0%, #fbbf24 100%);
   border-radius: 50% 50% 45% 45%;
-  box-shadow: 0 6px 20px rgba(251, 191, 36, 0.4);
+  box-shadow: 0 8px 24px rgba(251, 191, 36, 0.5);
   border: none;
   display: flex;
   align-items: center;
@@ -353,13 +303,13 @@ body {
 
 .bubble-eyes {
   display: flex;
-  gap: 14px;
-  margin-bottom: 4px;
+  gap: 18px;
+  margin-bottom: 6px;
 }
 
 .b-eye {
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   background: #92400e;
   border-radius: 50%;
   position: relative;
@@ -368,10 +318,10 @@ body {
 .b-eye::after {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 4px;
-  height: 4px;
+  top: 3px;
+  left: 3px;
+  width: 6px;
+  height: 6px;
   background: #fff;
   border-radius: 50%;
 }
@@ -379,12 +329,12 @@ body {
 .bubble-cheeks {
   display: flex;
   justify-content: center;
-  gap: 24px;
+  gap: 30px;
 }
 
 .b-cheek {
-  width: 8px;
-  height: 5px;
+  width: 10px;
+  height: 6px;
   background: #fca5a5;
   border-radius: 50%;
   opacity: 0.7;
@@ -405,55 +355,58 @@ body {
 }
 
 .bb.b1 {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   top: 0;
   right: 0;
   animation-delay: 0s;
 }
 
 .bb.b2 {
-  width: 8px;
-  height: 8px;
-  top: -8px;
-  right: 10px;
+  width: 10px;
+  height: 10px;
+  top: -10px;
+  right: 12px;
   animation-delay: 0.5s;
 }
 
 .bb.b3 {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   top: -2px;
-  right: -5px;
+  right: -6px;
   animation-delay: 1s;
 }
 
 @keyframes floatBubble {
   0%, 100% { transform: translateY(0); opacity: 0.5; }
-  50% { transform: translateY(-6px); opacity: 1; }
+  50% { transform: translateY(-8px); opacity: 1; }
 }
 
-/* 泡泡说话内容 */
-.bubble-content {
+/* 状态文字 */
+.status-content {
   text-align: center;
   width: 100%;
+  max-width: 300px;
 }
 
 .bubble-title {
-  font-size: 13px;
+  font-size: 24px;
   font-weight: bold;
   color: #fbbf24;
-  margin-bottom: 4px;
+  margin-bottom: 12px;
+  line-height: 1.2;
 }
 
-.bubble-speech-box.long .bubble-title { color: #4ade80; }
-.bubble-speech-box.short .bubble-title { color: #ef4444; }
-.bubble-speech-box.warning .bubble-title { color: #fbbf24; }
+.status-content.long .bubble-title { color: #4ade80; }
+.status-content.short .bubble-title { color: #ef4444; }
+.status-content.warning .bubble-title { color: #fbbf24; }
 
 .bubble-text {
-  font-size: 11px;
+  font-size: 18px;
   color: #94a3b8;
-  line-height: 1.4;
+  line-height: 1.5;
+  margin: 0;
 }
 
 /* 泡泡说话动画 */
@@ -904,6 +857,27 @@ body {
 .current-status.status-long .status-text { color: #10b981; }
 .current-status.status-short .status-text { color: #ef4444; }
 .current-status.status-neutral .status-text { color: #94a3b8; }
+
+/* 85分以上强烈信号样式 */
+.current-status.status-long.strong {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1));
+  border: 2px solid #10b981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  animation: pulse 2s infinite;
+}
+
+.current-status.status-short.strong {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.1));
+  border: 2px solid #ef4444;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  animation: pulse 2s infinite;
+}
+
+.current-status.status-long.strong .status-text,
+.current-status.status-short.strong .status-text {
+  font-size: 14px;
+  font-weight: 700;
+}
 
 /* 三色进度条 */
 .score-bar-container {

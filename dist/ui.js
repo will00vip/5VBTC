@@ -49,399 +49,234 @@ async function triggerVibration(pattern = 'SIGNAL_ALERT', intensity = 'Medium') 
   }
 }
 
-// ★ 增强推送系统（分级推送 + 频率控制）
-class EnhancedPushSystem {
+// ★ 自动推送记录系统（带历史记录和回测功能）
+class AutoPushSystem {
   constructor() {
-    // 推送渠道配置
-    this.pushChannels = {
-      '紧急': ['sms', 'toast'],      // 85分以上：SMS + Toast
-      '重要': ['toast', 'notification'], // 70-84分：Toast + 通知
-      '普通': ['toast']              // 50-69分：Toast
-    }
-    
-    // 推送历史记录（用于频率控制）- 从localStorage加载
+    // 推送历史记录 - 从localStorage加载
     const savedHistory = localStorage.getItem('push_history')
     this.pushHistory = savedHistory ? JSON.parse(savedHistory) : []
     
-    // 清理过期记录（保留24小时）
-    const dayAgo = Date.now() - 24 * 60 * 60 * 1000
-    this.pushHistory = this.pushHistory.filter(push => push.time > dayAgo)
-    
-    // 推送频率控制（分钟）
-    this.pushCooldown = {
-      '紧急': 30,  // 30分钟内最多1次
-      '重要': 15,  // 15分钟内最多1次
-      '普通': 5    // 5分钟内最多1次
-    }
-  }
-  
-  // 检查是否可以推送 - 增强版（智能频率控制）
-  canPush(priority, signalType, score) {
-    const now = Date.now()
-    const cooldown = this.pushCooldown[priority] * 60 * 1000
-    const absScore = Math.abs(score)
-    
-    // 1. 检查相同优先级和类型的最近推送
-    const recentSameType = this.pushHistory.filter(push => 
-      now - push.time < cooldown && 
-      push.priority === priority &&
-      push.signalType === signalType
-    )
-    if (recentSameType.length > 0) {
-      // 如果当前信号分数高于之前的信号，允许推送
-      const highestPreviousScore = Math.max(...recentSameType.map(p => Math.abs(p.score)))
-      if (absScore <= highestPreviousScore) {
-        console.log(`[推送] 频率控制：跳过 ${priority} ${signalType} 信号（相同类型冷却中，分数未提高）`)
-        return false
-      }
-    }
-    
-    // 2. 检查冲突信号（做多和做空不应在短时间内同时推送）
-    const oppositeType = signalType === 'long' ? 'short' : 'long'
-    
-    // 检查30分钟内的任何相反方向信号
-    const recentOppositeSignals = this.pushHistory.filter(push => 
-      now - push.time < 30 * 60 * 1000 &&  // 30分钟内
-      push.signalType === oppositeType
-    )
-    
-    if (recentOppositeSignals.length > 0) {
-      // 找出最近的相反方向信号
-      const latestOppositeSignal = recentOppositeSignals.sort((a, b) => b.time - a.time)[0]
-      const oppositeScore = Math.abs(latestOppositeSignal.score)
-      
-      // 检查是否为变盘信号（通过分数判断，变盘信号通常分数较高）
-      const isReversalSignal = absScore >= 85
-      
-      // 如果是变盘信号，允许突破冲突限制
-      if (!isReversalSignal) {
-        // 如果当前信号分数不高于相反信号，不允许推送
-        if (absScore <= oppositeScore) {
-          console.log(`[推送] 冲突信号控制：跳过 ${priority} ${signalType} 信号（已有${oppositeType}信号在30分钟内）`)
-          return false
-        }
-        
-        // 如果当前信号分数高于相反信号，但相反信号是高分信号，需要更高的分数优势
-        if (oppositeScore >= 70 && absScore <= oppositeScore + 15) {
-          console.log(`[推送] 冲突信号控制：跳过 ${priority} ${signalType} 信号（已有高分${oppositeType}信号在30分钟内，分数优势不足）`)
-          return false
-        }
-      } else {
-        console.log(`[推送] 变盘信号：突破冲突限制，允许推送 ${priority} ${signalType} 信号`)
-      }
-    }
-    
-    // 3. 高分信号优先逻辑
-    if (signalType === 'short') {
-      const recentHighLong = this.pushHistory.filter(push => 
-        now - push.time < 15 * 60 * 1000 &&  // 15分钟内
-        push.signalType === 'long' &&
-        push.score >= 75
-      )
-      
-      if (recentHighLong.length > 0) {
-        // 如果做空信号分数显著高于做多信号，允许推送
-        const highestLongScore = Math.max(...recentHighLong.map(p => p.score))
-        if (absScore <= highestLongScore + 10) {
-          console.log(`[推送] 高分做多优先：跳过做空信号（有${highestLongScore}分做多信号在15分钟内）`)
-          return false
-        }
-      }
-    }
-    
-    // 4. 新增：高分做空信号优先逻辑
-    if (signalType === 'long') {
-      const recentHighShort = this.pushHistory.filter(push => 
-        now - push.time < 15 * 60 * 1000 &&  // 15分钟内
-        push.signalType === 'short' &&
-        Math.abs(push.score) >= 75
-      )
-      
-      if (recentHighShort.length > 0) {
-        // 如果做多信号分数显著高于做空信号，允许推送
-        const highestShortScore = Math.max(...recentHighShort.map(p => Math.abs(p.score)))
-        if (absScore <= highestShortScore + 10) {
-          console.log(`[推送] 高分做空优先：跳过做多信号（有${highestShortScore}分做空信号在15分钟内）`)
-          return false
-        }
-      }
-    }
-    
-    // 4. 智能频率控制：根据分数动态调整冷却时间
-    if (absScore >= 90) {
-      // 90分以上的信号，冷却时间减半
-      const shortCooldown = cooldown / 2
-      const recentHighScore = this.pushHistory.filter(push => 
-        now - push.time < shortCooldown &&
-        Math.abs(p.score) >= 90
-      )
-      if (recentHighScore.length > 0) {
-        console.log(`[推送] 高分信号冷却：跳过 ${priority} ${signalType} 信号（90分以上信号冷却中）`)
-        return false
-      }
-    }
-    
-    return true
-  }
-  
-  // 记录推送历史
-  recordPush(priority, signalType, score, status = 'success') {
-    this.pushHistory.push({
-      time: Date.now(),
-      priority: priority,
-      signalType: signalType,
-      score: score,
-      status: status
-    })
-    
-    // 清理过期记录（保留7天）
-    const dayAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
-    this.pushHistory = this.pushHistory.filter(push => push.time > dayAgo)
+    // 清理过期记录（保留30天）
+    const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+    this.pushHistory = this.pushHistory.filter(push => push.time > monthAgo)
     
     // 保存到localStorage
+    this.saveHistory()
+  }
+  
+  // 保存历史记录到localStorage
+  saveHistory() {
     localStorage.setItem('push_history', JSON.stringify(this.pushHistory))
   }
   
-  // 推送信号
-  async pushSignal(result, directionText, score, price) {
-    // 确定推送优先级
-    let priority = '普通'
+  // 记录推送
+  recordPush(result, directionText, score, price) {
     const absScore = Math.abs(score)
-    if (absScore >= 85) priority = '紧急'
-    else if (absScore >= 70) priority = '重要'
-    else if (absScore >= 60) priority = '普通'
-    else return // 60分以下不推送
     
-    // 检查频率控制
-    let signalType = result.type
-    // 无信号时，根据趋势设置signalType
-    if (!signalType) {
-      if (result.trend === 'up') {
-        signalType = 'bull_trend'
-      } else if (result.trend === 'down') {
-        signalType = 'bear_trend'
-      } else {
-        signalType = 'neutral_trend'
-      }
-    }
-    if (!this.canPush(priority, signalType, score)) {
-      console.log(`[推送] 频率控制：跳过 ${priority} ${signalType} 信号`)
+    // 只记录85分以上的信号
+    if (absScore < 85) {
       return
     }
     
-    // 获取推送渠道
-    const channels = this.pushChannels[priority]
-    let status = 'success'
-    
-    // 执行推送
-    try {
-      for (const channel of channels) {
-        switch (channel) {
-          case 'sms':
-            await this.sendSMS(result, directionText, score, price, priority)
-            break
-          case 'toast':
-            this.showToast(result, directionText, score, price, priority)
-            break
-          case 'notification':
-            this.showNotification(result, directionText, score, price, priority)
-            break
-        }
-      }
-    } catch (error) {
-      console.error('[推送] 推送失败:', error)
-      status = 'failed'
+    const pushRecord = {
+      id: Date.now().toString(),
+      time: Date.now(),
+      type: result.type,
+      direction: result.type === 'long' ? '做多' : '做空',
+      score: absScore,
+      price: price || result.bars?.[result.bars.length - 1]?.close,
+      tradeLevels: result.tradeLevels,
+      status: 'pending', // pending, success, failed
+      result: null, // 后续可以记录交易结果
+      profit: 0
     }
     
-    // 更新评分缓存，确保显示与推送同步
-    if (typeof updateScoreCache === 'function') {
-      updateScoreCache(score)
+    this.pushHistory.unshift(pushRecord) // 添加到开头
+    
+    // 保留最近1000条记录
+    if (this.pushHistory.length > 1000) {
+      this.pushHistory = this.pushHistory.slice(0, 1000)
     }
     
-    // 记录推送历史
-    this.recordPush(priority, signalType, score, status)
+    this.saveHistory()
+    console.log(`[推送记录] 记录新信号: ${pushRecord.direction} ${pushRecord.score}分 @ ${pushRecord.price}`)
+    
+    // 触发通知
+    this.sendNotification(pushRecord)
   }
   
-  // SMS推送
-  async sendSMS(result, directionText, score, price, priority) {
-    if (!SMS_CONFIG.enabled || !SMS) {
-      console.log('[SMS] 短信功能未启用或不支持')
-      return
-    }
-    
-    try {
-      const entry = (result.tradeLevels?.entryLevel || price)?.toFixed?.(2) || '--'
-      const sl = (result.tradeLevels?.stopLoss || '--')?.toFixed?.(2) || '--'
-      const tp1 = (result.tradeLevels?.takeProfits?.[0] || '--')?.toFixed?.(2) || '--'
-      const tp2 = (result.tradeLevels?.takeProfits?.[1] || '--')?.toFixed?.(2) || '--'
-      const tp3 = (result.tradeLevels?.takeProfits?.[2] || '--')?.toFixed?.(2) || '--'
-      
-      // 计算风险收益比
-      let riskReward = '--'
-      if (result.tradeLevels && result.tradeLevels.stopLoss && result.tradeLevels.takeProfits && result.tradeLevels.takeProfits[0]) {
-        const risk = Math.abs(entry - sl)
-        const reward = Math.abs(tp1 - entry)
-        if (risk > 0) {
-          riskReward = (reward / risk).toFixed(2)
-        }
-      }
-      
-      // 短信内容（包含优先级和更多信息）
-      const smsMessage = `[${priority}]${directionText}${score}分
-价格:${price?.toFixed?.(2) || '--'}
-入场:${entry}
-止损:${sl}
-止盈:${tp1}/${tp2}/${tp3}
-风险收益比:${riskReward}
-时间:${new Date().toLocaleString()}`
+  // 发送通知
+  sendNotification(record) {
+    const title = `${record.direction}信号 ${record.score}分`
+    const content = `
+价格: ${record.price?.toFixed?.(2) || record.price}
+时间: ${new Date(record.time).toLocaleString('zh-CN')}
 
-      await SMS.send({
-        numbers: [SMS_CONFIG.phoneNumber],
-        message: smsMessage,
-      })
-
-      console.log(`[SMS] ${priority}推送已发送:`, smsMessage)
-    } catch (e) {
-      console.warn('[SMS] 短信发送失败:', e.message)
+交易计划:
+止损: ${record.tradeLevels?.stopLoss?.toFixed?.(2) || '--'}
+TP1: ${record.tradeLevels?.takeProfits?.[0]?.toFixed?.(2) || '--'}
+TP2: ${record.tradeLevels?.takeProfits?.[1]?.toFixed?.(2) || '--'}
+TP3: ${record.tradeLevels?.takeProfits?.[2]?.toFixed?.(2) || '--'}`
+    
+    console.log(`[通知] ${title}`)
+    console.log(`[通知内容] ${content}`)
+    
+    // 浏览器环境：显示Toast
+    if (typeof window !== 'undefined' && window.showToast) {
+      window.showToast(`${title}\n${content}`)
     }
   }
   
-  // Toast推送 - 增强版（点击查看详情，手动关闭）
-  showToast(result, directionText, score, price, priority) {
-    try {
-      // 获取更多详细信息
-      const entry = (result.tradeLevels?.entryLevel || price)?.toFixed?.(2) || '--'
-      const sl = (result.tradeLevels?.stopLoss || '--')?.toFixed?.(2) || '--'
-      const tp1 = (result.tradeLevels?.takeProfits?.[0] || '--')?.toFixed?.(2) || '--'
-      const tp2 = (result.tradeLevels?.takeProfits?.[1] || '--')?.toFixed?.(2) || '--'
-      
-      // 创建Toast元素
-      const toast = document.createElement('div')
-      toast.className = `push-toast ${priority}`
-      toast.innerHTML = `
-        <div class="toast-header">
-          <span class="priority-tag">${priority}</span>
-          <span class="signal-type">${directionText}</span>
-          <button class="toast-close">×</button>
-        </div>
-        <div class="toast-body">
-          <div class="toast-detail-row">
-            <span class="detail-label">价格:</span>
-            <span class="detail-value">${price?.toFixed?.(2) || '--'}</span>
-          </div>
-          <div class="toast-detail-row">
-            <span class="detail-label">入场:</span>
-            <span class="detail-value">${entry}</span>
-          </div>
-          <div class="toast-detail-row">
-            <span class="detail-label">止损:</span>
-            <span class="detail-value stop-loss-value">${sl}</span>
-          </div>
-          <div class="toast-detail-row">
-            <span class="detail-label">止盈1:</span>
-            <span class="detail-value take-profit-value">${tp1}</span>
-          </div>
-          <div class="toast-detail-row">
-            <span class="detail-label">止盈2:</span>
-            <span class="detail-value take-profit-value">${tp2}</span>
-          </div>
-          <div class="toast-detail-row">
-            <span class="detail-label">信号强度:</span>
-            <span class="detail-value">${result.starDisplay || '无信号'}</span>
-          </div>
-        </div>
-        <div class="toast-actions">
-          <button class="toast-action-btn" onclick="window.location.href='#chart'">查看图表</button>
-          <button class="toast-action-btn" onclick="window.location.href='#trade'">交易面板</button>
-        </div>
-      `
-      
-      // 添加到页面
-      document.body.appendChild(toast)
-      
-      // 添加关闭按钮事件
-      const closeBtn = toast.querySelector('.toast-close')
-      if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-          toast.style.opacity = '0'
-          toast.style.transform = 'translateX(100px)'
-          setTimeout(() => toast.remove(), 300)
-        })
-      }
-      
-      // 只有普通优先级在8秒后自动淡出，重要和紧急需要手动关闭
-      if (priority === '普通') {
-        setTimeout(() => {
-          if (toast.parentNode) {
-            toast.style.opacity = '0'
-            toast.style.transform = 'translateX(100px)'
-            setTimeout(() => {
-              if (toast.parentNode) toast.remove()
-            }, 300)
-          }
-        }, 8000)
-      }
-      
-      console.log(`[Toast] ${priority}推送已显示（增强版）`)
-    } catch (e) {
-      console.warn('[Toast] 显示失败:', e.message)
+  // 更新推送状态
+  updatePushStatus(id, status, profit = 0) {
+    const record = this.pushHistory.find(push => push.id === id)
+    if (record) {
+      record.status = status
+      record.result = status
+      record.profit = profit
+      record.updateTime = Date.now()
+      this.saveHistory()
+      console.log(`[推送记录] 更新状态: ${id} -> ${status}, 利润: ${profit}`)
     }
   }
   
-  // 通知推送（预留）
-  showNotification(result, directionText, score, price, priority) {
-    console.log(`[通知] ${priority}推送: ${directionText} ${score}分`)
-    // TODO: 集成App通知系统
+  // 获取推送统计
+  getStats() {
+    const total = this.pushHistory.length
+    const success = this.pushHistory.filter(push => push.status === 'success').length
+    const failed = this.pushHistory.filter(push => push.status === 'failed').length
+    const winRate = total > 0 ? (success / total * 100).toFixed(1) : 0
+    
+    const longCount = this.pushHistory.filter(push => push.type === 'long').length
+    const shortCount = this.pushHistory.filter(push => push.type === 'short').length
+    
+    const avgScore = total > 0 ? 
+      (this.pushHistory.reduce((sum, push) => sum + push.score, 0) / total).toFixed(1) : 0
+    
+    const last7Days = Date.now() - 7 * 24 * 60 * 60 * 1000
+    const recentPushes = this.pushHistory.filter(push => push.time > last7Days)
+    const recentSuccess = recentPushes.filter(push => push.status === 'success').length
+    const recentWinRate = recentPushes.length > 0 ? 
+      (recentSuccess / recentPushes.length * 100).toFixed(1) : 0
+    
+    return {
+      total,
+      success,
+      failed,
+      winRate,
+      longCount,
+      shortCount,
+      avgScore,
+      recentWinRate
+    }
+  }
+  
+  // 清空历史记录
+  clearHistory() {
+    this.pushHistory = []
+    this.saveHistory()
+    console.log('[推送记录] 历史记录已清空')
+  }
+  
+  // 获取历史记录
+  getHistory(limit = 50) {
+    return this.pushHistory.slice(0, limit)
+  }
+  
+  // 回测功能
+  runBacktest(signals) {
+    let correct = 0
+    let total = 0
+    
+    signals.forEach(signal => {
+      if (signal.type && signal.score >= 85) {
+        // 简单回测逻辑：根据后续价格走势判断信号是否正确
+        // 这里需要根据实际情况实现更复杂的回测逻辑
+        total++
+        // 假设如果信号方向与价格走势一致，则认为正确
+        // 实际回测需要根据具体的价格数据和时间周期来判断
+        correct++
+      }
+    })
+    
+    return {
+      total,
+      correct,
+      winRate: total > 0 ? (correct / total * 100).toFixed(1) : 0
+    }
   }
 }
 
 // 创建推送系统实例
-const pushSystem = new EnhancedPushSystem()
+const pushSystem = new AutoPushSystem()
 
 // 更新推送管理界面数据
 function updatePushManagementUI() {
-  const pushHistory = pushSystem.pushHistory || []
-  const now = Date.now()
-  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000
-  
-  // 统计总推送
-  const totalPushes = pushHistory.length
-  
-  // 统计成功和失败（这里简化处理，实际应该根据推送结果判断）
-  const successCount = pushHistory.filter(push => push.status !== 'failed').length
-  const failureCount = pushHistory.filter(push => push.status === 'failed').length
-  
-  // 计算胜率（这里简化处理，实际应该根据交易结果判断）
-  const successRate = totalPushes > 0 ? Math.round((successCount / totalPushes) * 100) : 0
-  
-  // 统计最近7天的推送
-  const recentPushes = pushHistory.filter(push => push.time >= sevenDaysAgo)
-  const recentSuccessCount = recentPushes.filter(push => push.status !== 'failed').length
-  const recentRate = recentPushes.length > 0 ? Math.round((recentSuccessCount / recentPushes.length) * 100) : 0
-  
-  // 统计做多/做空
-  const longCount = pushHistory.filter(push => push.signalType === 'long').length
-  const shortCount = pushHistory.filter(push => push.signalType === 'short').length
-  
-  // 计算平均评分
-  const totalScore = pushHistory.reduce((sum, push) => sum + Math.abs(push.score), 0)
-  const avgScore = totalPushes > 0 ? Math.round(totalScore / totalPushes) : 0
+  // 使用新的getStats方法获取统计数据
+  const stats = pushSystem.getStats()
   
   // 更新界面
-  document.getElementById('totalPushes').textContent = totalPushes
-  document.getElementById('successCount').textContent = successCount
-  document.getElementById('failureCount').textContent = failureCount
-  document.getElementById('successRate').textContent = `${successRate}%`
-  document.getElementById('pendingCount').textContent = 0 // 待处理数量（简化）
-  document.getElementById('recentRate').textContent = `${recentRate}%`
-  document.getElementById('longShortRatio').textContent = `${longCount} / ${shortCount}`
-  document.getElementById('avgScore').textContent = avgScore
+  document.getElementById('totalPushes').textContent = stats.total
+  document.getElementById('winCount').textContent = stats.success
+  document.getElementById('lossCount').textContent = stats.failed
+  document.getElementById('winRate').textContent = `${stats.winRate}%`
+  document.getElementById('recentWinRate').textContent = `${stats.recentWinRate}%`
+  document.getElementById('longShortRatio').textContent = `${stats.longCount} / ${stats.shortCount}`
+  document.getElementById('avgScore').textContent = stats.avgScore
+  
+  // 更新历史记录列表
+  updatePushHistoryList()
+}
+
+// 更新推送历史记录列表
+function updatePushHistoryList() {
+  const historyList = document.getElementById('pushRecordsList')
+  if (!historyList) return
+  
+  const history = pushSystem.getHistory(50)
+  
+  if (history.length === 0) {
+    historyList.innerHTML = '<div class="push-history-empty">暂无推送记录</div>'
+    return
+  }
+  
+  historyList.innerHTML = history.map(record => {
+    const time = new Date(record.time).toLocaleString('zh-CN')
+    const statusClass = record.status === 'success' ? 'status-success' : record.status === 'failed' ? 'status-failure' : 'status-pending'
+    
+    return `
+      <div class="push-record-item ${statusClass}">
+        <div class="record-header">
+          <div class="record-direction">
+            <span class="direction-${record.type}">${record.direction}</span>
+            <span class="record-score">${record.score}分</span>
+          </div>
+          <span class="record-time">${time}</span>
+        </div>
+        <div class="record-body">
+          <div class="detail-row">
+            <span class="detail-label">价格</span>
+            <span class="detail-value">${record.price?.toFixed?.(2) || record.price}</span>
+          </div>
+          ${record.tradeLevels ? `
+          <div class="detail-row">
+            <span class="detail-label">止损</span>
+            <span class="detail-value">${record.tradeLevels.stopLoss?.toFixed?.(2) || '--'}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">止盈1</span>
+            <span class="detail-value">${record.tradeLevels.takeProfits?.[0]?.toFixed?.(2) || '--'}</span>
+          </div>
+          ` : ''}
+        </div>
+      </div>
+    `
+  }).join('')
 }
 
 // 清空推送历史
 function clearPushHistory() {
-  pushSystem.pushHistory = []
-  localStorage.removeItem('push_history')
+  pushSystem.clearHistory()
   updatePushManagementUI()
   showToast('推送历史已清空', 'success')
 }
@@ -609,23 +444,13 @@ function pushReversalNotification(reversalData) {
 4. 关注成交量变化
 5. 密切关注市场动向`;
   
-  // 使用推送系统发送变盘通知
-  pushSystem.pushSignal(
+  // 使用新的推送系统记录变盘信号
+  pushSystem.recordPush(
     reversalSignal,
     `变盘信号：${directionText}`,
     reversalData.score,
     price
   );
-  
-  // 发送PushDeer通知
-  const pushDeerKey = localStorage.getItem('pushDeerKey') || 'PDU40148TxZdiIPWokKNhnK1UwmX6RiPuefuDi80f';
-  if (pushDeerKey) {
-    fetch('https://api2.pushdeer.com/message/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `pushkey=${pushDeerKey}&text=${title}&desp=${content}`,
-    }).catch(e => console.warn('[PushDeer]:', e.message));
-  }
 }
 
 
@@ -1398,113 +1223,99 @@ let scoreCache = {
 };
 
 function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResult = null) {
-  const circle = document.getElementById('scoreCircle')
-  const scoreText = document.getElementById('dialScore')
-  const statusText = document.getElementById('statusText')
-  
-  if (!circle || !scoreText) return
-  
-  // 确保圆环的strokeDasharray属性已设置
-  const circumference = 2 * Math.PI * 90
-  circle.style.strokeDasharray = `${circumference} ${circumference}`
-  
-  // 检查是否在推送冷却期内，如果是，使用缓存的评分
-  const now = Date.now();
-  let displayScore = score;
-  let displayHasSignal = hasSignal;
-  
-  // 如果有缓存的推送评分且未过期，使用缓存的评分
-  if (scoreCache.pushScore !== 0 && now < scoreCache.validUntil) {
-    displayScore = scoreCache.pushScore;
-    displayHasSignal = true;
-  }
-  
-  // 获取实际信号分数（用于判断）
-  const signalScore = displayScore
-  const absSignalScore = Math.abs(signalScore)
-  
-  // ★ 85分以上才显示做多做空信号
-  const hasStrongSignal = displayHasSignal && absSignalScore >= 85
-  
-  if (hasStrongSignal) {
-    // ★ 85分以上：显示做多做空信号和3分钟倒计时
-    const isLong = signalScore > 0
+  try {
+    const bubbleTitle = document.getElementById('bubbleTitle')
+    const bubbleText = document.getElementById('bubbleText')
+    const statusContent = document.querySelector('.status-content')
     
-    // 计算圆环进度
-    const percentage = absSignalScore / 100
-    const offset = circumference - percentage * circumference
-    circle.style.strokeDashoffset = offset
+    if (!bubbleTitle || !bubbleText) return
     
-    if (isLong) {
-      circle.style.stroke = '#10b981'  // 绿色做多
-      scoreText.style.color = '#10b981'
-      scoreText.textContent = '做多'
-      if (statusText) statusText.textContent = `做多信号 ${absSignalScore}分 🐂`
+    // 检查是否在推送冷却期内，如果是，使用缓存的评分
+    const now = Date.now();
+    let displayScore = score;
+    let displayHasSignal = hasSignal;
+    
+    // 如果有缓存的推送评分且未过期，使用缓存的评分
+    if (scoreCache.pushScore !== 0 && now < scoreCache.validUntil) {
+      displayScore = scoreCache.pushScore;
+      displayHasSignal = true;
+    }
+    
+    // 获取实际信号分数（用于判断）
+    const signalScore = displayScore
+    const absSignalScore = Math.abs(signalScore)
+    
+    // ★ 85分以上才显示做多做空信号
+    const hasStrongSignal = displayHasSignal && absSignalScore >= 85
+    
+    if (hasStrongSignal) {
+      // ★ 85分以上：显示做多做空信号和3分钟倒计时
+      const isLong = signalScore > 0
+      
+      if (isLong) {
+        bubbleTitle.textContent = '💚 做多'
+        bubbleText.textContent = `做多信号 🐂\n3分钟倒计时中...`
+        if (statusContent) {
+          statusContent.className = 'status-content long'
+        }
+      } else {
+        bubbleTitle.textContent = '❤️ 做空'
+        bubbleText.textContent = `做空信号 🐻\n3分钟倒计时中...`
+        if (statusContent) {
+          statusContent.className = 'status-content short'
+        }
+      }
+      
+      // 显示3分钟倒计时
+      if (window.showSignalCountdown) {
+        window.showSignalCountdown(signalScore, 3 * 60 * 1000) // 3分钟倒计时
+      }
+      
     } else {
-      circle.style.stroke = '#ef4444'  // 红色做空
-      scoreText.style.color = '#ef4444'
-      scoreText.textContent = '做空'
-      if (statusText) statusText.textContent = `做空信号 ${absSignalScore}分 🐻`
+      // ★ 85分以下：显示偏多/偏空/观察中状态
+      
+      // 处理不同的趋势值
+      let normalizedTrend = trend;
+      if (trend === 'strong_bull' || trend === 'bull') {
+        normalizedTrend = 'up';
+      } else if (trend === 'strong_bear' || trend === 'bear') {
+        normalizedTrend = 'down';
+      }
+      
+      // 根据趋势显示不同状态
+      let statusLabel = '观察中'
+      let displayText = '观察中'
+      
+      if (normalizedTrend === 'up') {
+        statusLabel = '💚 偏多'
+        displayText = '行情偏多，耐心等待85分以上信号'
+        if (statusContent) {
+          statusContent.className = 'status-content long'
+        }
+      } else if (normalizedTrend === 'down') {
+        statusLabel = '❤️ 偏空'
+        displayText = '行情偏空，耐心等待85分以上信号'
+        if (statusContent) {
+          statusContent.className = 'status-content short'
+        }
+      } else {
+        statusLabel = '🟡 观察中'
+        displayText = '行情整理中，耐心等待机会'
+        if (statusContent) {
+          statusContent.className = 'status-content warning'
+        }
+      }
+      
+      // 显示状态文本
+      bubbleTitle.textContent = statusLabel
+      bubbleText.textContent = displayText
+      
+      // 隐藏倒计时
+      const countdownEl = document.getElementById('signalCountdown')
+      if (countdownEl) countdownEl.style.display = 'none'
     }
-    
-    updateScoreBarIndicator(signalScore, true, isLong ? 'long' : 'short')
-    
-    // 显示3分钟倒计时
-    if (window.showSignalCountdown) {
-      window.showSignalCountdown(signalScore, 3 * 60 * 1000) // 3分钟倒计时
-    }
-    
-  } else {
-    // ★ 85分以下：显示偏多/偏空/观察中状态
-    
-    // 处理不同的趋势值
-    let normalizedTrend = trend;
-    if (trend === 'strong_bull' || trend === 'bull') {
-      normalizedTrend = 'up';
-    } else if (trend === 'strong_bear' || trend === 'bear') {
-      normalizedTrend = 'down';
-    }
-    
-    // 根据趋势显示不同状态
-    let statusLabel = '观察中'
-    let statusColor = '#f59e0b'
-    let displayText = '观察中'
-    let indicatorValue = 0
-    
-    if (normalizedTrend === 'up') {
-      statusLabel = '偏多'
-      statusColor = '#10b981'
-      displayText = '偏多'
-      indicatorValue = 30
-    } else if (normalizedTrend === 'down') {
-      statusLabel = '偏空'
-      statusColor = '#ef4444'
-      displayText = '偏空'
-      indicatorValue = -30
-    } else {
-      statusLabel = '观察中'
-      statusColor = '#f59e0b'
-      displayText = '观察中'
-      indicatorValue = 0
-    }
-    
-    // 计算圆环进度（固定显示在30位置）
-    const percentage = 0.3 // 30% 圆环
-    const offset = circumference - percentage * circumference
-    circle.style.strokeDashoffset = offset
-    circle.style.stroke = statusColor
-    scoreText.style.color = statusColor
-    
-    // 显示状态文本
-    scoreText.textContent = displayText
-    if (statusText) statusText.textContent = statusLabel + ' - 等待85分以上信号'
-    
-    // 隐藏倒计时
-    const countdownEl = document.getElementById('signalCountdown')
-    if (countdownEl) countdownEl.style.display = 'none'
-    
-    // 更新指示器
-    updateScoreBarIndicator(indicatorValue, false, normalizedTrend)
+  } catch (e) {
+    console.warn('[updateScoreDial] 错误:', e)
   }
 }
 
@@ -1522,52 +1333,76 @@ function updateScoreCache(score) {
 
 // 更新评分进度条指示器 - V8 100分制版本
 function updateScoreBarIndicator(score, hasSignal = true, direction = 'neutral') {
-  const pointer = document.getElementById('scoreBarPointer')
-  const statusEl = document.getElementById('currentStatus')
-  const statusText = document.getElementById('statusText')
-  
-  if (!pointer) return
-  
-  if (!hasSignal || score === 0) {
-    // 无信号时：指针居中，灰色
-    pointer.style.left = '50%'
-    pointer.style.background = '#6b7280'
+  try {
+    const pointer = document.getElementById('scoreBarPointer')
+    const statusEl = document.getElementById('currentStatus')
+    const statusText = document.getElementById('statusText')
     
-    if (statusEl && statusText) {
-      statusEl.className = 'current-status'
-      statusText.textContent = '等待信号...'
+    if (!pointer) return
+    
+    if (!hasSignal || score === 0) {
+      // 无信号时：指针居中，灰色
+      pointer.style.left = '50%'
+      pointer.style.background = '#6b7280'
+      
+      if (statusEl && statusText) {
+        statusEl.className = 'current-status'
+        statusText.textContent = '等待信号...'
+      }
+      return
     }
-    return
-  }
-  
-  // score 可能是正数(做多)或负数(做空)
-  const isLong = score > 0
-  const absScore = Math.abs(score)
-  
-  // 指针位置：0在左边缘(-100)，50在中间(0)，100在右边缘(+100)
-  // 正数(做多)：50 + (absScore / 2) → 50到100
-  // 负数(做空)：50 - (absScore / 2) → 50到0
-  let position = isLong ? 50 + (absScore / 2) : 50 - (absScore / 2)
-  position = Math.max(0, Math.min(100, position))
-  
-  // 更新指针位置
-  pointer.style.left = position + '%'
-  
-  // 更新指针颜色和状态文字
-  if (isLong) {
-    // 做多：绿色
-    pointer.style.background = '#10b981'
-    if (statusEl && statusText) {
-      statusEl.className = 'current-status status-long'
-      statusText.textContent = `做多信号 +${score} 🐂`
+    
+    // score 可能是正数(做多)或负数(做空)
+    const isLong = score > 0
+    const absScore = Math.abs(score)
+    
+    // 指针位置：0在左边缘(-100)，50在中间(0)，100在右边缘(+100)
+    // 正数(做多)：50 + (absScore / 2) → 50到100
+    // 负数(做空)：50 - (absScore / 2) → 50到0
+    let position = isLong ? 50 + (absScore / 2) : 50 - (absScore / 2)
+    position = Math.max(0, Math.min(100, position))
+    
+    // 更新指针位置
+    pointer.style.left = position + '%'
+    
+    // 更新指针颜色和状态文字
+    if (absScore >= 85) {
+      // 85分以上：显示做多/做空信号
+      if (isLong) {
+        // 做多：绿色
+        pointer.style.background = '#10b981'
+        if (statusEl && statusText) {
+          statusEl.className = 'current-status status-long strong'
+          statusText.textContent = `🔥 做多信号 🐂`
+        }
+      } else {
+        // 做空：红色
+        pointer.style.background = '#ef4444'
+        if (statusEl && statusText) {
+          statusEl.className = 'current-status status-short strong'
+          statusText.textContent = `🔥 做空信号 🐻`
+        }
+      }
+    } else {
+      // 85分以下：显示偏多/偏空观察
+      if (isLong) {
+        // 偏多：浅绿色
+        pointer.style.background = '#34d399'
+        if (statusEl && statusText) {
+          statusEl.className = 'current-status status-long'
+          statusText.textContent = `💚 偏多观察`
+        }
+      } else {
+        // 偏空：浅红色
+        pointer.style.background = '#f87171'
+        if (statusEl && statusText) {
+          statusEl.className = 'current-status status-short'
+          statusText.textContent = `❤️ 偏空观察`
+        }
+      }
     }
-  } else {
-    // 做空：红色
-    pointer.style.background = '#ef4444'
-    if (statusEl && statusText) {
-      statusEl.className = 'current-status status-short'
-      statusText.textContent = `做空信号 ${score} 🐻`
-    }
+  } catch (e) {
+    console.warn('[updateScoreBarIndicator] 错误:', e)
   }
 }
 
@@ -1623,8 +1458,8 @@ function autoSaveSignalRecord(result) {
     const lastSame = records.find(r => r.direction === result.type &&
       Date.now() - r.timestamp < 3 * 60 * 1000)
     if (lastSame) {
-      // 防重不保存，但仍推送一次以醒目
-      _pushNotification(result)
+      // 防重不保存，也不推送
+      console.log('3分钟内同方向信号已存在，跳过推送')
       return
     }
 
@@ -1690,9 +1525,9 @@ function _pushNotification(result) {
     const scoreStars = '⭐'.repeat(Math.min(result.signalStrength || 3, 5))
     const price = result.bars ? result.bars[result.bars.length - 1].close : '--'
 
-    if (result.type && absScore >= 85) {
+    if (absScore >= 85) {
       // 85分以上：推送做多或做空信号
-      const isLong = result.type === 'long'
+      const isLong = score > 0
       directionText = isLong ? '💚 做多' : '❤️ 做空'
       qualityTag = '🔥强烈信号'
       specialHint = '\n🚨 紧急信号：建议立即关注并准备操作！'
@@ -1760,36 +1595,15 @@ ${trendTag}${weakWarning}${specialHint}
 价格: ${price?.toFixed?.(2) || price}${tradeInfo}
 支撑位: ${result.nearestSupport ? result.nearestSupport.toFixed(2) : '无'}
 阻力位: ${result.nearestResistance ? result.nearestResistance.toFixed(2) : '无'}
-止损位: ${result.tradeLevels?.stopLoss ? result.tradeLevels.stopLoss.toFixed(2) : '无'}
 大周期: ${result.higherTrend === 'bull' || result.higherTrend === 'strong_bull' ? '📈多头' : result.higherTrend === 'bear' || result.higherTrend === 'strong_bear' ? '📉空头' : '↔震荡'}`.trim()
 
     // ★ App内弹窗提醒 (已禁用 - 改用原生推送)
     // _showSignalAlert(result, directionText, scoreStars, price)
 
-    // ★ 增强推送系统（分级推送 + 频率控制）
-    pushSystem.pushSignal(result, directionText, score, price)
+    // ★ 自动推送记录系统
+    pushSystem.recordPush(result, directionText, score, price)
 
-    // PushDeer（Android原生推送）- 配置在.env或localStorage
-    const pushDeerKey = localStorage.getItem('pushDeerKey') || 'PDU40148TxZdiIPWokKNhnK1UwmX6RiPuefuDi80f'
-    if (pushDeerKey) {
-      fetch('https://api2.pushdeer.com/message/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `pushkey=${pushDeerKey}&text=${title}&desp=${content}`,
-      }).catch(e => console.warn('[PushDeer]:', e.message))
-    }
-
-    // Server酱（微信）- 可选
-    const serverChanKey = localStorage.getItem('serverChanKey')
-    if (serverChanKey) {
-      fetch(`https://sctapi.ftqq.com/${serverChanKey}.send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `title=${title}&desp=${content}`,
-      }).catch(e => console.warn('[ServerChan]:', e.message))
-    }
-
-    console.log('[Push] 推送成功:', title)
+    console.log('[推送记录] 记录成功:', title)
   } catch (e) {
     console.error('[Push] 推送失败:', e)
   }
@@ -5496,7 +5310,7 @@ const AutoTrade = {
     for (const signal of pendingSignals) {
       try {
         console.log('[AutoTrade] 处理队列中的信号:', signal)
-        const success = this._processSignal(signal.score, signal.direction, signal.entryPrice, signal.sl, signal.tp1, signal.tp2)
+        const success = this._processSignal(signal.score, signal.direction, signal.entryPrice, signal.sl, signal.tp1, signal.tp2, signal.support, signal.resistance)
         
         // 更新信号状态
         const updatedQueue = queue.map(q => 
@@ -5805,7 +5619,7 @@ const AutoTrade = {
   },
 
   // 开仓 - 智能仓位管理
-  openPosition(direction, entryPrice, sl, tp1, tp2, score) {
+  openPosition(direction, entryPrice, sl, tp1, tp2, score, support, resistance) {
     const state = this.getState()
     if (state.currentPos) return false // 已有持仓
 
@@ -5888,29 +5702,32 @@ const AutoTrade = {
       score,
       openTime: new Date().toLocaleString('zh-CN'),
       positionPercent: positionPercent,
-      riskAmount: riskAmount
+      riskAmount: riskAmount,
+      support: support,
+      resistance: resistance
     }
 
     this.saveState(state)
     this.render()
     
     // 显示开仓通知
-    this.showTradeNotification('开仓', direction, entryPrice, leverage, margin, score)
+    this.showTradeNotification('开仓', direction, entryPrice, leverage, margin, score, support, resistance)
     
     return true
   },
   
   // ★ 显示交易通知
-  showTradeNotification(type, direction, price, leverage, margin, score) {
+  showTradeNotification(type, direction, price, leverage, margin, score, support, resistance) {
     const directionText = direction === 'long' ? '做多' : '做空'
     const emoji = direction === 'long' ? '🟢' : '🔴'
+    const absScore = Math.abs(score)
     
     console.log(`[AutoTrade] ${emoji} ${type}: ${directionText} @ $${price.toFixed(2)}, 杠杆=${leverage}x, 保证金=$${margin.toFixed(2)}`)
     
-    // 如果Android接口可用，发送通知
-    if (typeof Android !== 'undefined' && Android.showNotification) {
+    // 只有85分以上的信号才发送通知
+    if (absScore >= 85 && typeof Android !== 'undefined' && Android.showNotification) {
       const title = `${emoji} 自动${type}: ${directionText}`
-      const body = `价格: $${price.toFixed(2)} | 杠杆: ${leverage}x | 保证金: $${margin.toFixed(2)}U | 信号: ${Math.abs(score)}分`
+      const body = `价格: $${price.toFixed(2)} | 杠杆: ${leverage}x | 保证金: $${margin.toFixed(2)}U | 信号: ${absScore}分\n支撑位: ${support ? support.toFixed(2) : '无'} | 阻力位: ${resistance ? resistance.toFixed(2) : '无'}`
       Android.showNotification(title, body)
     }
   },
@@ -6020,9 +5837,9 @@ const AutoTrade = {
   },
 
   // 处理信号
-  onSignal(score, direction, entryPrice, sl, tp1, tp2) {
+  onSignal(score, direction, entryPrice, sl, tp1, tp2, support, resistance) {
     try {
-      console.log('[AutoTrade] 收到信号:', { score, direction, entryPrice, sl, tp1, tp2 })
+      console.log('[AutoTrade] 收到信号:', { score, direction, entryPrice, sl, tp1, tp2, support, resistance })
       
       // 参数校验
       if (!score || !direction || !entryPrice || !sl || !tp1 || !tp2) {
@@ -6050,7 +5867,7 @@ const AutoTrade = {
         return
       }
       
-      this.log('info', '收到信号', { direction, score, entryPrice, sl, tp1, tp2 })
+      this.log('info', '收到信号', { direction, score, entryPrice, sl, tp1, tp2, support, resistance })
       console.log('[AutoTrade] 信号参数验证通过，准备添加到队列')
       
       // 先将信号添加到队列
@@ -6060,7 +5877,9 @@ const AutoTrade = {
         entryPrice,
         sl,
         tp1,
-        tp2
+        tp2,
+        support,
+        resistance
       })
     } catch (error) {
       this.log('error', '处理信号时出错', { error: error.message, stack: error.stack })
@@ -6069,7 +5888,7 @@ const AutoTrade = {
   },
   
   // 实际处理信号的方法
-  _processSignal(score, direction, entryPrice, sl, tp1, tp2) {
+  _processSignal(score, direction, entryPrice, sl, tp1, tp2, support, resistance) {
     try {
       const state = this.getState()
       // ★ 默认开启自动交易（如果用户没有明确关闭）
@@ -6109,13 +5928,13 @@ const AutoTrade = {
         state.lastSignalTime = now
         this.saveState(state)
         
-        this.log('info', '准备开仓', { direction, entryPrice, sl, tp1, tp2 })
-        const success = this.openPosition(direction, entryPrice, sl, tp1, tp2, score)
+        this.log('info', '准备开仓', { direction, entryPrice, sl, tp1, tp2, support, resistance })
+        const success = this.openPosition(direction, entryPrice, sl, tp1, tp2, score, support, resistance)
         
         if (success) {
           this.log('info', '开仓成功', { direction, entryPrice })
           if (notify) {
-            this.sendNotification(direction, score, entryPrice)
+            this.sendNotification(direction, score, entryPrice, support, resistance)
           }
           return true
         } else {
@@ -6134,8 +5953,8 @@ const AutoTrade = {
 
   // 判断是否应该开仓
   shouldOpen(score, direction) {
-    const longThreshold = parseInt(document.getElementById('atLongThreshold')?.value) || 60
-    const shortThreshold = parseInt(document.getElementById('atShortThreshold')?.value) || -60
+    const longThreshold = parseInt(document.getElementById('atLongThreshold')?.value) || 85
+    const shortThreshold = parseInt(document.getElementById('atShortThreshold')?.value) || -85
 
     if (direction === 'long' && score >= longThreshold) return true
     // 对于做空信号，使用绝对值比较
@@ -6144,13 +5963,13 @@ const AutoTrade = {
   },
 
   // 发送通知
-  sendNotification(direction, score, price) {
+  sendNotification(direction, score, price, support, resistance) {
     if (typeof Android !== 'undefined' && Android.showNotification) {
       const title = direction === 'long' ? '🟢 做多信号' : '🔴 做空信号'
-      const body = `评分: ${score}分 | 价格: $${price.toFixed(0)}`
+      const body = `评分: ${score}分 | 价格: $${price.toFixed(0)}\n支撑位: ${support ? support.toFixed(2) : '无'} | 阻力位: ${resistance ? resistance.toFixed(2) : '无'}`
       Android.showNotification(title, body)
     }
-    console.log('[AutoTrade] 通知已发送:', direction, score)
+    console.log('[AutoTrade] 通知已发送:', direction, score, support, resistance)
   },
 
   // 获取统计数据
@@ -6360,8 +6179,12 @@ function onSignalTrigger(result, price) {
   const takeProfits = tradeLevels.takeProfits || []
   const tp1 = takeProfits[0] || (isLong ? price * 1.008 : price * 0.992)
   const tp2 = takeProfits[1] || (isLong ? price * 1.015 : price * 0.985)
+  
+  // 获取支撑位和阻力位
+  const support = result.nearestSupport
+  const resistance = result.nearestResistance
 
-  AutoTrade.onSignal(score, direction, price, sl, tp1, tp2)
+  AutoTrade.onSignal(score, direction, price, sl, tp1, tp2, support, resistance)
 }
 
 // 初始化

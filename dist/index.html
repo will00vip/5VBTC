@@ -88,57 +88,19 @@
 
   <!-- ★ 猫咪评分圆盘（移到最上面）★ -->
   <section class="score-main-section">
-    <!-- 左侧：评分圆盘 -->
-    <div class="score-left">
-      <div class="score-dial-small">
-        <svg viewBox="0 0 200 200" class="dial-svg">
-          <!-- 外圈装饰 -->
-          <circle cx="100" cy="100" r="90" fill="none" stroke="#1a2233" stroke-width="8" />
-          <!-- 评分进度 -->
-          <circle id="scoreCircle" cx="100" cy="100" r="90" fill="none"
-                  stroke="#4ade80" stroke-width="8" stroke-linecap="round"
-                  stroke-dasharray="565.48" stroke-dashoffset="565.48"
-                  transform="rotate(-90 100 100)" />
-          <!-- 内圈装饰 -->
-          <circle cx="100" cy="100" r="70" fill="#0f141f" stroke="#2d3748" stroke-width="2" />
-          <!-- 分数显示 -->
-          <text x="100" y="115" text-anchor="middle" class="dial-score" id="dialScore">0</text>
-        </svg>
-        <!-- 评分圆环标注 - V2新版 -->
-        <div class="dial-annotations">
-          <span class="dial-ann dial-ann-left">🔴做空</span>
-          <span class="dial-ann dial-ann-center">🟡观望</span>
-          <span class="dial-ann dial-ann-right">🟢做多</span>
-        </div>
-      </div>
-      
-      <!-- 评分刻度尺（缩小版，放在圆盘下方） -->
-      <div class="score-ruler">
-        <span class="ruler-label red">🔴-100</span>
-        <div class="ruler-bar">
-          <div class="ruler-zone red"></div>
-          <div class="ruler-zone neutral"></div>
-          <div class="ruler-zone green"></div>
-        </div>
-        <span class="ruler-label green">+100🟢</span>
-      </div>
-    </div>
-
-    <!-- 右侧：猫咪+操作建议（合并） -->
-    <div class="score-right">
-      <!-- ★ 绿色泡泡说话区域 ★ -->
-      <div class="bubble-speech-box" id="bubbleSpeechBox">
-        <div class="bubble-character" id="bubbleCharacter">
-          <div class="bubble-body">
-            <div class="bubble-face">
-              <div class="bubble-eyes">
-                <div class="b-eye"></div>
-                <div class="b-eye"></div>
-              </div>
-              <div class="bubble-cheeks">
-                <div class="b-cheek"></div>
-                <div class="b-cheek"></div>
-              </div>
+    <!-- 中间：表情和状态文字 -->
+    <div class="score-center">
+      <!-- 表情 -->
+      <div class="bubble-character" id="bubbleCharacter">
+        <div class="bubble-body">
+          <div class="bubble-face">
+            <div class="bubble-eyes">
+              <div class="b-eye"></div>
+              <div class="b-eye"></div>
+            </div>
+            <div class="bubble-cheeks">
+              <div class="b-cheek"></div>
+              <div class="b-cheek"></div>
             </div>
           </div>
           <!-- 泡泡装饰 -->
@@ -148,7 +110,8 @@
             <div class="bb b3"></div>
           </div>
         </div>
-        <div class="bubble-content">
+        <!-- 状态文字 -->
+        <div class="status-content">
           <div class="bubble-title" id="bubbleTitle">🫧 等待信号...</div>
           <div class="bubble-text" id="bubbleText">行情整理中，耐心等待机会</div>
         </div>
