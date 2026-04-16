@@ -668,21 +668,40 @@ function calculateTradeLevels(signalType, bars, atrPeriod) {
   var stopLoss = 0;
   var takeProfits = [];
   
+  // 计算最近的支撑位/阻力位
+  var recentLows = [];
+  var recentHighs = [];
+  for (var i = Math.max(0, bars.length - 20); i < bars.length; i++) {
+    recentLows.push(bars[i].low);
+    recentHighs.push(bars[i].high);
+  }
+  var recentLow = Math.min.apply(Math, recentLows);
+  var recentHigh = Math.max.apply(Math, recentHighs);
+  
+  // 调整止损距离，基于ATR的0.6倍，同时考虑最近的支撑位/阻力位
+  var stopLossMultiplier = 0.6; // 减小止损距离到0.6倍ATR
+  
   if (signalType === 'long') {
     entryZone = [price - currentATR * 0.5, price];
-    stopLoss = price - currentATR * 1.0; // 减少止损距离，提高风险回报比
+    // 止损设置在最近低点下方或0.6倍ATR，取较大值
+    var atrStopLoss = price - currentATR * stopLossMultiplier;
+    var supportStopLoss = recentLow - 50; // 最近低点下方50点
+    stopLoss = Math.max(atrStopLoss, supportStopLoss);
     takeProfits = [
-      price + currentATR * 1.5, // 止盈1：1.5倍ATR
-      price + currentATR * 2.5, // 止盈2：2.5倍ATR
-      price + currentATR * 3.5  // 止盈3：3.5倍ATR
+      price + currentATR * 1.2, // 止盈1：1.2倍ATR
+      price + currentATR * 2.0, // 止盈2：2.0倍ATR
+      price + currentATR * 2.8  // 止盈3：2.8倍ATR
     ];
   } else if (signalType === 'short') {
     entryZone = [price, price + currentATR * 0.5];
-    stopLoss = price + currentATR * 1.0; // 减少止损距离，提高风险回报比
+    // 止损设置在最近高点上方或0.6倍ATR，取较小值
+    var atrStopLoss = price + currentATR * stopLossMultiplier;
+    var resistanceStopLoss = recentHigh + 50; // 最近高点上方50点
+    stopLoss = Math.min(atrStopLoss, resistanceStopLoss);
     takeProfits = [
-      price - currentATR * 1.5, // 止盈1：1.5倍ATR
-      price - currentATR * 2.5, // 止盈2：2.5倍ATR
-      price - currentATR * 3.5  // 止盈3：3.5倍ATR
+      price - currentATR * 1.2, // 止盈1：1.2倍ATR
+      price - currentATR * 2.0, // 止盈2：2.0倍ATR
+      price - currentATR * 2.8  // 止盈3：2.8倍ATR
     ];
   }
   
