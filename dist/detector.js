@@ -995,6 +995,16 @@ async function detectSignal(interval) {
   
   var tradeLevels = signalType ? calculateTradeLevels(signalType, bars) : null;
   
+  // 计算支撑位和阻力位
+  var recentLows = [];
+  var recentHighs = [];
+  for (var i = Math.max(0, bars.length - 20); i < bars.length; i++) {
+    recentLows.push(bars[i].low);
+    recentHighs.push(bars[i].high);
+  }
+  var nearestSupport = Math.min.apply(Math, recentLows);
+  var nearestResistance = Math.max.apply(Math, recentHighs);
+  
   var positionAdvice = signalType && tradeLevels ? 
     calculatePositionAdvice(
       signalStrength, 
@@ -1039,6 +1049,10 @@ async function detectSignal(interval) {
     
     lastBar: lastBar,
     prevBar: prevBar,
+    
+    // ★ 支撑位和阻力位
+    nearestSupport: nearestSupport,
+    nearestResistance: nearestResistance,
     
     // ★ 详细评分信息
     scoreDetails: scoreDetails,

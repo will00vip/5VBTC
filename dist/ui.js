@@ -1758,8 +1758,9 @@ function _pushNotification(result) {
     const content = `
 ${trendTag}${weakWarning}${specialHint}
 价格: ${price?.toFixed?.(2) || price}${tradeInfo}
-支撑位: ${result.nearSupport ? `✅(${result.swingLowCount}个)` : '❌远离'}
-阻力位: ${result.nearResistance ? `✅(${result.swingHighCount}个)` : '❌远离'}
+支撑位: ${result.nearestSupport ? result.nearestSupport.toFixed(2) : '无'}
+阻力位: ${result.nearestResistance ? result.nearestResistance.toFixed(2) : '无'}
+止损位: ${result.tradeLevels?.stopLoss ? result.tradeLevels.stopLoss.toFixed(2) : '无'}
 大周期: ${result.higherTrend === 'bull' || result.higherTrend === 'strong_bull' ? '📈多头' : result.higherTrend === 'bear' || result.higherTrend === 'strong_bear' ? '📉空头' : '↔震荡'}`.trim()
 
     // ★ App内弹窗提醒 (已禁用 - 改用原生推送)
