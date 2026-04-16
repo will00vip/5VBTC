@@ -1111,7 +1111,7 @@ function displaySignalInfo(result) {
 
 // 信号缓存，用于同步推送和UI显示
 let signalCache = null
-const SIGNAL_CACHE_DURATION = 120 * 1000 // 120秒缓存
+const SIGNAL_CACHE_DURATION = 60 * 1000 // 60秒缓存（减少缓存时间，避免分数快速切换）
 
 // 更新信号缓存
 function updateSignalCache(result) {
@@ -1236,7 +1236,8 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     let displayHasSignal = hasSignal;
     
     // 如果有缓存的推送评分且未过期，使用缓存的评分
-    if (scoreCache.pushScore !== 0 && now < scoreCache.validUntil) {
+    // 但是如果当前分数已经低于85分，不使用缓存，避免显示过时的信号
+    if (scoreCache.pushScore !== 0 && now < scoreCache.validUntil && Math.abs(score) >= 85) {
       displayScore = scoreCache.pushScore;
       displayHasSignal = true;
     }
@@ -1313,6 +1314,11 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
       // 隐藏倒计时
       const countdownEl = document.getElementById('signalCountdown')
       if (countdownEl) countdownEl.style.display = 'none'
+    }
+    
+    // 无论分数高低，都更新止盈止损和支撑位/阻力位信息
+    if (signalResult) {
+      displaySignalInfo(signalResult)
     }
   } catch (e) {
     console.warn('[updateScoreDial] 错误:', e)

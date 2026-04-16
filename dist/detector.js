@@ -60,22 +60,26 @@ function checkSignalCooldown(lastSignal, currentType) {
   var lastSignalType = lastSignal.lastSignalType;
   var lastSignalScore = Math.abs(lastSignal.lastSignalScore || 0);
   
-  // 动态冷却时间设置
-  var baseCooldown = 10 * 60 * 1000; // 基础冷却期10分钟
-  var sameDirectionCooldown = 15 * 60 * 1000; // 同方向信号冷却15分钟
-  var oppositeDirectionCooldown = 30 * 60 * 1000; // 相反方向信号冷却30分钟
+  // 动态冷却时间设置 - 优化版本
+  var baseCooldown = 5 * 60 * 1000; // 基础冷却期5分钟（减少）
+  var sameDirectionCooldown = 10 * 60 * 1000; // 同方向信号冷却10分钟
+  var oppositeDirectionCooldown = 20 * 60 * 1000; // 相反方向信号冷却20分钟（增加）
   
-  // 根据上次信号分数调整冷却时间
+  // 如果上次是高分信号(85+)，需要更长的冷却时间
   if (lastSignalScore >= 85) {
-    // 高分信号需要更长的冷却时间，避免频繁高分信号干扰
     baseCooldown *= 1.5;
     sameDirectionCooldown *= 1.5;
-    oppositeDirectionCooldown *= 1.5;
+    oppositeDirectionCooldown *= 2; // 高分信号后，反向需要更长冷却
   } else if (lastSignalScore >= 70) {
-    // 中等分数信号适当延长冷却时间
     baseCooldown *= 1.2;
     sameDirectionCooldown *= 1.2;
-    oppositeDirectionCooldown *= 1.2;
+    oppositeDirectionCooldown *= 1.5;
+  }
+  
+  // 如果上次信号方向与当前方向相反，增加冷却
+  if (currentType && currentType !== lastSignalType) {
+    // 反向信号需要更严格的检查
+    oppositeDirectionCooldown *= 1.5;
   }
   
   // 基础冷却期：任何信号都需要至少基础冷却时间
@@ -780,14 +784,26 @@ async function detectSignal(interval) {
   
   var lastBar = bars[bars.length - 1];
   var prevBar = bars[bars.length - 2];
+  var prevPrevBar = bars[bars.length - 3]; // 前第二根K线，用于多K线确认
   
   var body = Math.abs(prevBar.close - prevBar.open) || 0.01;
   var lowerShadow = Math.min(prevBar.open, prevBar.close) - prevBar.low;
   var upperShadow = prevBar.high - Math.max(prevBar.open, prevBar.close);
   
-  // 增强插针检测：要求影线至少是实体的2.5倍，且价格在K线中上部
-  var isLongPin = lowerShadow >= body * 2.5 && prevBar.close > (prevBar.low + (prevBar.high - prevBar.low) * 0.6);
-  var isShortPin = upperShadow >= body * 2.5 && prevBar.close < (prevBar.high - (prevBar.high - prevBar.low) * 0.6);
+  // 增强插针检测：要求影线至少是实体的3倍（更严格），且价格在K线中上部
+  // 增加多K线确认：需要前一根或前两根K线也满足插针条件
+  var prevBody = Math.abs(prevPrevBar.close - prevPrevBar.open) || 0.01;
+  var prevLowerShadow = Math.min(prevPrevBar.open, prevPrevBar.close) - prevPrevBar.low;
+  var prevUpperShadow = prevPrevBar.high - Math.max(prevPrevBar.open, prevPrevBar.close);
+  
+  // 多K线确认：当前K线满足条件，且前1-2根K线也满足插针条件
+  var isLongPinCurrent = lowerShadow >= body * 3 && prevBar.close > (prevBar.low + (prevBar.high - prevBar.low) * 0.6);
+  var isLongPinPrev = prevLowerShadow >= prevBody * 2.5 && prevPrevBar.close > (prevPrevBar.low + (prevPrevBar.high - prevPrevBar.low) * 0.6);
+  var isLongPin = isLongPinCurrent && isLongPinPrev; // 需要连续2根K线确认
+  
+  var isShortPinCurrent = upperShadow >= body * 3 && prevBar.close < (prevBar.high - (prevBar.high - prevBar.low) * 0.6);
+  var isShortPinPrev = prevUpperShadow >= prevBody * 2.5 && prevPrevBar.close < (prevPrevBar.high - (prevPrevBar.high - prevPrevBar.low) * 0.6);
+  var isShortPin = isShortPinCurrent && isShortPinPrev; // 需要连续2根K线确认
   
   var c2Long = lastBar.low > prevBar.low && lastBar.close > lastBar.open;
   var c2Short = lastBar.high < prevBar.high && lastBar.close < lastBar.open;
