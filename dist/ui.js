@@ -1520,9 +1520,9 @@ function _pushNotification(result) {
       return
     }
     
-    // ★ 横盘整理特殊处理：在横盘整理时不推送高分信号
-    if (result.trend === 'sideways' && absScore >= 60) {
-      console.log('横盘整理时不推送高分信号，分数:', score)
+    // ★ 横盘整理特殊处理：在横盘整理时不推送做多做空信号，但仍然推送观察信号
+    if (result.trend === 'sideways' && absScore >= 85) {
+      console.log('横盘整理时不推送做多做空信号，分数:', score)
       return
     }
     

@@ -790,20 +790,23 @@ async function detectSignal(interval) {
   var lowerShadow = Math.min(prevBar.open, prevBar.close) - prevBar.low;
   var upperShadow = prevBar.high - Math.max(prevBar.open, prevBar.close);
   
-  // 增强插针检测：要求影线至少是实体的3倍（更严格），且价格在K线中上部
-  // 增加多K线确认：需要前一根或前两根K线也满足插针条件
+  // 插针检测：要求影线至少是实体的3倍，且价格在K线中上部
+  // 多K线确认：前1-2根K线中只要有1根满足插针条件即可（改为OR逻辑，更宽松）
   var prevBody = Math.abs(prevPrevBar.close - prevPrevBar.open) || 0.01;
   var prevLowerShadow = Math.min(prevPrevBar.open, prevPrevBar.close) - prevPrevBar.low;
   var prevUpperShadow = prevPrevBar.high - Math.max(prevPrevBar.open, prevPrevBar.close);
   
-  // 多K线确认：当前K线满足条件，且前1-2根K线也满足插针条件
+  // 当前K线的插针判定
   var isLongPinCurrent = lowerShadow >= body * 3 && prevBar.close > (prevBar.low + (prevBar.high - prevBar.low) * 0.6);
-  var isLongPinPrev = prevLowerShadow >= prevBody * 2.5 && prevPrevBar.close > (prevPrevBar.low + (prevPrevBar.high - prevPrevBar.low) * 0.6);
-  var isLongPin = isLongPinCurrent && isLongPinPrev; // 需要连续2根K线确认
-  
   var isShortPinCurrent = upperShadow >= body * 3 && prevBar.close < (prevBar.high - (prevBar.high - prevBar.low) * 0.6);
+  
+  // 前一根K线的插针判定（标准稍宽松）
+  var isLongPinPrev = prevLowerShadow >= prevBody * 2.5 && prevPrevBar.close > (prevPrevBar.low + (prevPrevBar.high - prevPrevBar.low) * 0.6);
   var isShortPinPrev = prevUpperShadow >= prevBody * 2.5 && prevPrevBar.close < (prevPrevBar.high - (prevPrevBar.high - prevPrevBar.low) * 0.6);
-  var isShortPin = isShortPinCurrent && isShortPinPrev; // 需要连续2根K线确认
+  
+  // 多K线确认：当前K线或前一根K线满足条件即可（OR逻辑，更容易触发信号）
+  var isLongPin = isLongPinCurrent || isLongPinPrev;
+  var isShortPin = isShortPinCurrent || isShortPinPrev;
   
   var c2Long = lastBar.low > prevBar.low && lastBar.close > lastBar.open;
   var c2Short = lastBar.high < prevBar.high && lastBar.close < lastBar.open;
@@ -993,10 +996,10 @@ async function detectSignal(interval) {
       signalStrength = Math.round(-rawScore);
     }
     
-    // ★ 横盘整理特殊处理：在横盘整理时降低信号评分
+    // ★ 横盘整理特殊处理：在横盘整理时降低信号评分（减少降低幅度）
     if (trendInfo.trend === 'sideways') {
-      // 横盘整理时降低信号评分
-      var sidewaysReduction = 30; // 横盘整理时降低30分
+      // 横盘整理时降低信号评分（从30分减少到15分）
+      var sidewaysReduction = 15; // 横盘整理时降低15分
       if (signalType === 'long') {
         signalStrength = Math.max(0, signalStrength - sidewaysReduction);
       } else {
