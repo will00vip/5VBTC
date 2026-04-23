@@ -73,8 +73,8 @@ class AutoPushSystem {
   recordPush(result, directionText, score, price) {
     const absScore = Math.abs(score)
     
-    // 只记录85分以上的信号
-    if (absScore < 85) {
+    // 只记录60分以上的信号
+    if (absScore < 60) {
       return
     }
     
@@ -83,7 +83,7 @@ class AutoPushSystem {
       time: Date.now(),
       type: result.type,
       direction: result.type === 'long' ? '做多' : '做空',
-      score: absScore,
+      score: score, // 保存原始分数，保留正负号
       price: price || result.bars?.[result.bars.length - 1]?.close,
       tradeLevels: result.tradeLevels,
       status: 'pending', // pending, success, failed
@@ -107,16 +107,39 @@ class AutoPushSystem {
   
   // 发送通知
   sendNotification(record) {
-    const title = `${record.direction}信号 ${record.score}分`
+    const score = record.score || 0
+    const absScore = Math.abs(score)
+    const isLong = score > 0
+    
+    // 根据分数确定通知标题
+    let title
+    if (absScore >= 85) {
+      title = isLong ? '🟢 做多信号' : '🔴 做空信号'
+    } else if (absScore >= 60 && absScore < 85) {
+      title = isLong ? '🟢 偏多观察' : '🔴 偏空观察'
+    } else {
+      // 60分以下不发送通知
+      return
+    }
+    
+    // 构建通知内容
     const content = `
-价格: ${record.price?.toFixed?.(2) || record.price}
+📊 信号详情
+分数: ${score}分
+价格: $${record.price?.toFixed?.(2) || record.price}
 时间: ${new Date(record.time).toLocaleString('zh-CN')}
 
-交易计划:
-止损: ${record.tradeLevels?.stopLoss?.toFixed?.(2) || '--'}
-TP1: ${record.tradeLevels?.takeProfits?.[0]?.toFixed?.(2) || '--'}
-TP2: ${record.tradeLevels?.takeProfits?.[1]?.toFixed?.(2) || '--'}
-TP3: ${record.tradeLevels?.takeProfits?.[2]?.toFixed?.(2) || '--'}`
+🎯 交易计划
+${record.tradeLevels?.entryLevel ? `入场: $${record.tradeLevels.entryLevel.toFixed(2)}` : ''}
+${record.tradeLevels?.entryZone ? `入场区间: $${record.tradeLevels.entryZone[0].toFixed(2)} - $${record.tradeLevels.entryZone[1].toFixed(2)}` : ''}
+止损: $${record.tradeLevels?.stopLoss?.toFixed?.(2) || '--'}
+${record.tradeLevels?.takeProfits?.[0] ? `止盈1: $${record.tradeLevels.takeProfits[0].toFixed(2)}` : ''}
+${record.tradeLevels?.takeProfits?.[1] ? `止盈2: $${record.tradeLevels.takeProfits[1].toFixed(2)}` : ''}
+${record.tradeLevels?.takeProfits?.[2] ? `止盈3: $${record.tradeLevels.takeProfits[2].toFixed(2)}` : ''}
+
+📈 市场分析
+支撑位: $${record.nearestSupport?.toFixed?.(2) || '无'}
+阻力位: $${record.nearestResistance?.toFixed?.(2) || '无'}`
     
     console.log(`[通知] ${title}`)
     console.log(`[通知内容] ${content}`)
@@ -318,7 +341,9 @@ window.onReversalSignal = function(reversalData) {
   console.log('[变盘提醒] 检测到变盘信号:', reversalData);
   
   // 触发强烈震动提醒
-  triggerVibration('TRIPLE_ALERT', 'Heavy');
+  if (typeof triggerVibration === 'function') {
+    triggerVibration('TRIPLE_ALERT', 'Heavy');
+  }
   
   // 创建变盘特别提醒
   showReversalAlert(reversalData);
@@ -445,15 +470,15 @@ function pushReversalNotification(reversalData) {
 5. 密切关注市场动向`;
   
   // 使用新的推送系统记录变盘信号
-  pushSystem.recordPush(
-    reversalSignal,
-    `变盘信号：${directionText}`,
-    reversalData.score,
-    price
-  );
+  if (typeof pushSystem !== 'undefined' && pushSystem.recordPush) {
+    pushSystem.recordPush(
+      reversalSignal,
+      `变盘信号：${directionText}`,
+      reversalData.score,
+      price
+    );
+  }
 }
-
-
 
 document.addEventListener('DOMContentLoaded', function() {
   // 初始化系统
@@ -596,6 +621,11 @@ async function _warmupBasicData() {
       const score = calculateOverallScore(result)
       // 判断是否有插针信号
       const hasSignal = result.signalConfidence && result.signalConfidence !== 0
+      
+      // ★ 更新全局分数和方向（供updateSignalIndicator使用）
+      window.lastScore = score
+      window.lastDirection = result.type || ''
+      
       updateScoreDial(score, hasSignal, result.trend, result)
       console.log('[Data] 指标数据预热完成', hasSignal ? '有信号' : '无信号', '分数:', score)
     }
@@ -872,6 +902,11 @@ function processSignalResult(result) {
     // 判断是否有插针信号（使用缓存）
     const cache = getValidSignalCache()
     const hasSignal = (result.signalConfidence && result.signalConfidence !== 0) || !!cache
+    
+    // ★ 更新全局分数和方向（供updateSignalIndicator使用）
+    window.lastScore = score
+    window.lastDirection = result.type || ''
+    
     if (window.updateScoreDial) {
       window.updateScoreDial(score, hasSignal, result.trend, result)
     }
@@ -1055,14 +1090,23 @@ function startCountdown(result) {
 
 // 显示信号信息
 function displaySignalInfo(result) {
-  // 显示信号状态（做多/做空）
+  // 显示信号状态（做多/做空/观察）
   const directionIcon = document.getElementById('directionIcon')
   const directionText = document.getElementById('directionText')
   
   if (directionIcon && directionText && result.type) {
+    const score = Math.abs(result.signalConfidence || 0)
     const isLong = result.type === 'long'
-    directionIcon.textContent = isLong ? '🟢' : '🔴'
-    directionText.textContent = isLong ? '做多信号' : '做空信号'
+    
+    if (score >= 85) {
+      // 85分以上：显示做多/做空信号
+      directionIcon.textContent = isLong ? '🟢' : '🔴'
+      directionText.textContent = isLong ? '做多信号' : '做空信号'
+    } else if (score >= 60 && score < 85) {
+      // 60-84分：显示偏多/偏空观察
+      directionIcon.textContent = isLong ? '🟢' : '🔴'
+      directionText.textContent = isLong ? '偏多观察' : '偏空观察'
+    }
   }
   
   // 显示止盈止损信息
@@ -1137,76 +1181,18 @@ function getValidSignalCache() {
 }
 
 // 计算综合评分 - V8 100分制版本
-// 核心逻辑：
-// 1. 有插针信号 → 使用 signalConfidence（正数做多0-100，负数做空-100到0）
-// 2. 无插针信号 → 技术指标打基础分，显示市场状态
+// 核心逻辑：只使用5个维度打分系统的signalConfidence
 function calculateOverallScore(result) {
   if (!result) return 0  // 无数据返回0分
 
-  // 检查是否有有效的信号缓存
-  const cache = getValidSignalCache()
-  if (cache) {
-    return Math.round(cache.signalConfidence)  // 使用缓存的信号分数
-  }
-
-  // ── 1. 有插针信号时：直接返回信号分数 ──
+  // 只使用5个维度打分系统的signalConfidence
   if (result.signalConfidence && result.signalConfidence !== 0) {
     updateSignalCache(result)  // 更新信号缓存
     return Math.round(result.signalConfidence)  // 做多正数，做空负数
   }
 
-  // ── 2. 无插针信号：用技术指标打基础分 ──
-  let score = 0  // 基础分0
-
-  // 趋势加分 (0-20分)
-  if (result.trend) {
-    if (result.trend === 'up') score += 20
-    else if (result.trend === 'down') score -= 15
-  }
-
-  // RSI加分 (0-20分) - 超卖加分，超买减分
-  if (result.rsiVal !== undefined) {
-    const rsi = result.rsiVal
-    if (rsi < 30) score += 20  // 严重超卖，有反弹可能
-    else if (rsi < 40) score += 15
-    else if (rsi < 50) score += 10
-    else if (rsi > 70) score -= 15  // 严重超买
-    else if (rsi > 60) score -= 10
-    else if (rsi > 50) score += 5
-  }
-
-  // MACD加分 (0-15分)
-  if (result.macdBar !== undefined) {
-    if (result.macdBar > 0) score += 15
-    else score -= 10
-  }
-
-  // KDJ加分 (0-15分) - 超卖加分
-  if (result.jVal !== undefined) {
-    const j = result.jVal
-    if (j < 20) score += 15  // 严重超卖
-    else if (j < 35) score += 10
-    else if (j < 50) score += 5
-    else if (j > 80) score -= 10  // 严重超买
-    else if (j > 65) score -= 5
-    else score += 0
-  }
-
-  // BOLL位置加分 (0-10分) - 接近下轨加分，上轨减分
-  if (result.bollLast && result.lastBar) {
-    const { upper, lower } = result.bollLast
-    const price = result.lastBar.close
-    const bollPercent = ((price - lower) / (upper - lower)) * 100
-    if (bollPercent < 20) score += 10  // 接近下轨，极度超卖
-    else if (bollPercent < 30) score += 8
-    else if (bollPercent < 40) score += 5
-    else if (bollPercent > 80) score -= 8  // 接近上轨
-    else if (bollPercent > 70) score -= 5
-    else score += 0
-  }
-
-  // 最终范围：-50到50分（无插针时的基础分）
-  return Math.min(50, Math.max(-50, Math.round(score)))
+  // 无插针信号时返回0分
+  return 0
 }
 
 
@@ -1236,8 +1222,9 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
     let displayHasSignal = hasSignal;
     
     // 如果有缓存的推送评分且未过期，使用缓存的评分
-    // 但是如果当前分数已经低于85分，不使用缓存，避免显示过时的信号
-    if (scoreCache.pushScore !== 0 && now < scoreCache.validUntil && Math.abs(score) >= 85) {
+    // 【修复】当前分数低于85分时，不使用缓存，避免显示过时的强烈信号
+    const currentAbsScore = Math.abs(score);
+    if (scoreCache.pushScore !== 0 && now < scoreCache.validUntil && currentAbsScore >= 85) {
       displayScore = scoreCache.pushScore;
       displayHasSignal = true;
     }
@@ -1273,28 +1260,20 @@ function updateScoreDial(score, hasSignal = false, trend = 'neutral', signalResu
       }
       
     } else {
-      // ★ 85分以下：显示偏多/偏空/观察中状态
+      // ★ 85分以下：根据分数正负号显示偏多/偏空状态
       
-      // 处理不同的趋势值
-      let normalizedTrend = trend;
-      if (trend === 'strong_bull' || trend === 'bull') {
-        normalizedTrend = 'up';
-      } else if (trend === 'strong_bear' || trend === 'bear') {
-        normalizedTrend = 'down';
-      }
-      
-      // 根据趋势显示不同状态
+      // 根据分数正负号判断方向
       let statusLabel = '观察中'
       let displayText = '观察中'
       
-      if (normalizedTrend === 'up') {
-        statusLabel = '💚 偏多'
+      if (signalScore > 0) {
+        statusLabel = '💚 偏多观察'
         displayText = '行情偏多，耐心等待85分以上信号'
         if (statusContent) {
           statusContent.className = 'status-content long'
         }
-      } else if (normalizedTrend === 'down') {
-        statusLabel = '❤️ 偏空'
+      } else if (signalScore < 0) {
+        statusLabel = '❤️ 偏空观察'
         displayText = '行情偏空，耐心等待85分以上信号'
         if (statusContent) {
           statusContent.className = 'status-content short'
@@ -1389,21 +1368,38 @@ function updateScoreBarIndicator(score, hasSignal = true, direction = 'neutral')
           statusText.textContent = `🔥 做空信号 🐻`
         }
       }
-    } else {
-      // 85分以下：显示偏多/偏空观察
+    } else if (absScore >= 60) {
+      // 60-84分：显示偏多/偏空观察
       if (isLong) {
-        // 偏多：浅绿色
+        // 偏多观察：浅绿色
         pointer.style.background = '#34d399'
         if (statusEl && statusText) {
           statusEl.className = 'current-status status-long'
           statusText.textContent = `💚 偏多观察`
         }
       } else {
-        // 偏空：浅红色
+        // 偏空观察：浅红色
         pointer.style.background = '#f87171'
         if (statusEl && statusText) {
           statusEl.className = 'current-status status-short'
           statusText.textContent = `❤️ 偏空观察`
+        }
+      }
+    } else {
+      // 60分以下：显示观察中
+      if (isLong) {
+        // 偏多：浅绿色
+        pointer.style.background = '#34d399'
+        if (statusEl && statusText) {
+          statusEl.className = 'current-status status-long'
+          statusText.textContent = `💚 观察中`
+        }
+      } else {
+        // 偏空：浅红色
+        pointer.style.background = '#f87171'
+        if (statusEl && statusText) {
+          statusEl.className = 'current-status status-short'
+          statusText.textContent = `❤️ 观察中`
         }
       }
     }
@@ -1514,11 +1510,11 @@ function _pushNotification(result) {
     const score = calculateOverallScore(result)
     const absScore = Math.abs(score)
     
-    // 0-60分的信号不推送
-    if (absScore < 60) {
-      console.log('信号分数低于60，不推送通知:', score)
-      return
-    }
+    // 60分以下的信号不推送
+      if (absScore < 60) {
+        console.log('信号分数低于60，不推送通知:', score)
+        return
+      }
     
     // ★ 横盘整理特殊处理：在横盘整理时不推送做多做空信号，但仍然推送观察信号
     if (result.trend === 'sideways' && absScore >= 85) {
@@ -1531,13 +1527,14 @@ function _pushNotification(result) {
     const scoreStars = '⭐'.repeat(Math.min(result.signalStrength || 3, 5))
     const price = result.bars ? result.bars[result.bars.length - 1].close : '--'
 
+    // 明确的分数区间判断
     if (absScore >= 85) {
       // 85分以上：推送做多或做空信号
       const isLong = score > 0
       directionText = isLong ? '💚 做多' : '❤️ 做空'
       qualityTag = '🔥强烈信号'
       specialHint = '\n🚨 紧急信号：建议立即关注并准备操作！'
-    } else if (absScore >= 60) {
+    } else if (absScore >= 60 && absScore < 85) {
       // 60-84分：只推送观察状态，不推送做多做空
       if (score > 0) {
         directionText = '💚 偏多观察'
@@ -1577,18 +1574,18 @@ function _pushNotification(result) {
     // 构建止盈止损信息
     let tradeInfo = ''
     if (result.tradeLevels) {
-      tradeInfo = `\n📊 交易计划：\n`
+      tradeInfo = `\n🎯 交易计划\n`
       if (result.tradeLevels.entryLevel) {
-        tradeInfo += `入场: ${result.tradeLevels.entryLevel.toFixed(2)}\n`
+        tradeInfo += `入场: $${result.tradeLevels.entryLevel.toFixed(2)}\n`
       } else if (result.tradeLevels.entryZone) {
-        tradeInfo += `入场区间: ${result.tradeLevels.entryZone[0].toFixed(2)} - ${result.tradeLevels.entryZone[1].toFixed(2)}\n`
+        tradeInfo += `入场区间: $${result.tradeLevels.entryZone[0].toFixed(2)} - $${result.tradeLevels.entryZone[1].toFixed(2)}\n`
       }
       if (result.tradeLevels.stopLoss) {
-        tradeInfo += `止损: ${result.tradeLevels.stopLoss.toFixed(2)}\n`
+        tradeInfo += `止损: $${result.tradeLevels.stopLoss.toFixed(2)}\n`
       }
       if (result.tradeLevels.takeProfits && result.tradeLevels.takeProfits.length > 0) {
         for (let i = 0; i < result.tradeLevels.takeProfits.length; i++) {
-          tradeInfo += `TP${i+1}: ${result.tradeLevels.takeProfits[i].toFixed(2)}\n`
+          tradeInfo += `止盈${i+1}: $${result.tradeLevels.takeProfits[i].toFixed(2)}\n`
         }
       }
       if (result.tradeLevels.atrPercent) {
@@ -1596,12 +1593,15 @@ function _pushNotification(result) {
       }
     }
     
+    // 构建市场分析信息
+    let marketInfo = `\n📈 市场分析\n`
+    marketInfo += `支撑位: $${result.nearestSupport ? result.nearestSupport.toFixed(2) : '无'}\n`
+    marketInfo += `阻力位: $${result.nearestResistance ? result.nearestResistance.toFixed(2) : '无'}\n`
+    marketInfo += `大周期: ${result.higherTrend === 'bull' || result.higherTrend === 'strong_bull' ? '📈多头' : result.higherTrend === 'bear' || result.higherTrend === 'strong_bear' ? '📉空头' : '↔震荡'}`
+    
     const content = `
 ${trendTag}${weakWarning}${specialHint}
-价格: ${price?.toFixed?.(2) || price}${tradeInfo}
-支撑位: ${result.nearestSupport ? result.nearestSupport.toFixed(2) : '无'}
-阻力位: ${result.nearestResistance ? result.nearestResistance.toFixed(2) : '无'}
-大周期: ${result.higherTrend === 'bull' || result.higherTrend === 'strong_bull' ? '📈多头' : result.higherTrend === 'bear' || result.higherTrend === 'strong_bear' ? '📉空头' : '↔震荡'}`.trim()
+价格: $${price?.toFixed?.(2) || price}${tradeInfo}${marketInfo}`.trim()
 
     // ★ App内弹窗提醒 (已禁用 - 改用原生推送)
     // _showSignalAlert(result, directionText, scoreStars, price)
@@ -1760,8 +1760,15 @@ function updateSignalInfo(result) {
   
   // 方向信息
   const isLong = result.type === 'long'
+  const score = Math.abs(result.signalConfidence || 0)
   setContent('directionIcon', isLong ? '🟢' : '🔴')
-  setContent('directionText', isLong ? '做多信号' : '做空信号')
+  
+  // 根据分数显示不同状态
+  if (score >= 85) {
+    setContent('directionText', isLong ? '做多信号' : '做空信号')
+  } else if (score >= 60 && score < 85) {
+    setContent('directionText', isLong ? '偏多观察' : '偏空观察')
+  }
   
   // 信号强度
   const strength = result.signalStrength || 1
@@ -1973,253 +1980,22 @@ function updateTrendIndicator(result) {
 }
 
 // 更新技术指标评分
-function updateTechnicalIndicators(result) {
-  if (!result) return
-  
-  // RSI 评分
-  if (result.rsiVal !== undefined) {
-    const rsiScore = calculateRSIScore(result.rsiVal)
-    const rsiStatus = getRSIStatus(result.rsiVal)
-    const rsiStatusText = getRSIStatusText(result.rsiVal)
-    updateIndicatorCard('RSI', rsiScore, rsiStatus, rsiStatusText, '超买超卖')
-  } else {
-    updateIndicatorCard('RSI', '--', 'neutral', '等待', '--')
-  }
-  
-  // MACD 评分
-  if (result.macdBar !== undefined) {
-    const macdScore = calculateMACDScore(result.macdBar)
-    const macdStatus = getMACDStatus(result.macdBar)
-    const macdStatusText = getMACDStatusText(result.macdBar)
-    updateIndicatorCard('MACD', macdScore, macdStatus, macdStatusText, '趋势动量')
-  } else {
-    updateIndicatorCard('MACD', '--', 'neutral', '等待', '--')
-  }
-  
-  // KDJ 评分
-  if (result.jVal !== undefined) {
-    const kdjScore = calculateKDJScore(result.jVal)
-    const kdjStatus = getKDJStatus(result.jVal)
-    const kdjStatusText = getKDJStatusText(result.jVal)
-    updateIndicatorCard('KDJ', kdjScore, kdjStatus, kdjStatusText, '随机指标')
-  } else {
-    updateIndicatorCard('KDJ', '--', 'neutral', '等待', '--')
-  }
-  
-  // BOLL 评分
-  if (result.bollLast && result.lastBar) {
-    const price = result.lastBar.close
-    const { upper, lower } = result.bollLast
-    const percent = ((price - lower) / (upper - lower) * 100)
-    const bollScore = calculateBOLLScore(percent)
-    const bollStatus = getBOLLStatus(percent)
-    const bollStatusText = getBOLLStatusText(percent)
-    updateIndicatorCard('BOLL', bollScore, bollStatus, bollStatusText, '布林带位置')
-  } else {
-    updateIndicatorCard('BOLL', '--', 'neutral', '等待', '--')
-  }
-}
+
 
 // 计算指标分数函数
-function calculateRSIScore(rsi) {
-  // RSI 0-100分，理想值50，超买>70，超卖<30
-  if (rsi < 30) return 85  // 超卖区域，做多机会
-  if (rsi > 70) return 15  // 超买区域，做空机会
-  if (rsi >= 40 && rsi <= 60) return 70  // 中间区域，趋势稳定
-  return 50  // 偏超买/超卖但未极端
-}
 
-function calculateMACDScore(macdBar) {
-  // MACD柱状图评分，正值看多，负值看空
-  if (macdBar > 0.5) return 85  // 强多头
-  if (macdBar > 0.1) return 70  // 多头
-  if (macdBar < -0.5) return 15  // 强空头
-  if (macdBar < -0.1) return 30  // 空头
-  return 50  // 中性
-}
 
-function calculateKDJScore(j) {
-  // KDJ的J值评分，与RSI类似
-  if (j < 20) return 85  // 超卖，做多机会
-  if (j > 80) return 15  // 超买，做空机会
-  if (j >= 40 && j <= 60) return 70  // 中间区域
-  return 50  // 偏超买/超卖
-}
 
-function calculateBOLLScore(percent) {
-  // 布林带位置百分比，0-100%，中间区域最好
-  if (percent < 20) return 85  // 下轨附近，超卖
-  if (percent > 80) return 15  // 上轨附近，超买
-  if (percent >= 40 && percent <= 60) return 80  // 中轨附近最佳
-  return 60  // 其他位置
-}
 
-// 获取指标状态函数
-function getRSIStatus(rsi) {
-  if (rsi < 30) return 'oversold'
-  if (rsi > 70) return 'overbought'
-  if (rsi >= 40 && rsi <= 60) return 'bullish'
-  return 'neutral'
-}
 
-function getRSIStatusText(rsi) {
-  if (rsi < 30) return '超卖'
-  if (rsi > 70) return '超买'
-  if (rsi >= 40 && rsi <= 60) return '健康'
-  return '中性'
-}
 
-function getMACDStatus(macdBar) {
-  if (macdBar > 0) return 'bullish'
-  if (macdBar < 0) return 'bearish'
-  return 'neutral'
-}
 
-function getMACDStatusText(macdBar) {
-  if (macdBar > 0.5) return '强多'
-  if (macdBar > 0) return '多头'
-  if (macdBar < -0.5) return '强空'
-  if (macdBar < 0) return '空头'
-  return '中性'
-}
 
-function getKDJStatus(j) {
-  if (j < 20) return 'oversold'
-  if (j > 80) return 'overbought'
-  if (j >= 40 && j <= 60) return 'bullish'
-  return 'neutral'
-}
 
-function getKDJStatusText(j) {
-  if (j < 20) return '超卖'
-  if (j > 80) return '超买'
-  if (j >= 40 && j <= 60) return '健康'
-  return '中性'
-}
 
-function getBOLLStatus(percent) {
-  if (percent < 20) return 'oversold'
-  if (percent > 80) return 'overbought'
-  if (percent >= 40 && percent <= 60) return 'bullish'
-  return 'neutral'
-}
 
-function getBOLLStatusText(percent) {
-  if (percent < 20) return '下轨'
-  if (percent > 80) return '上轨'
-  if (percent >= 40 && percent <= 60) return '中轨'
-  return '其他'
-}
 
-// 更新指标卡片
-function updateIndicatorCard(name, score, status, statusText, hint) {
-  const card = document.getElementById(`indicator${name}`)
-  if (!card) return
-  
-  const scoreElem = document.getElementById(`indicator${name}Score`)
-  const statusElem = document.getElementById(`indicator${name}Status`)
-  const hintElem = document.getElementById(`indicator${name}Note`)
-  
-  // 添加实时更新闪烁效果
-  if (score !== '--') {
-    card.classList.remove('data-updating')
-    void card.offsetWidth
-    card.classList.add('data-updating')
-  }
-  
-  if (scoreElem) scoreElem.textContent = score !== '--' ? Math.round(score) : '--'
-  if (statusElem) statusElem.textContent = statusText || '等待'
-  if (hintElem) hintElem.textContent = hint || '--'
-  
-  // 更新状态类
-  card.className = `indicator-card ${status}`
-}
 
-// 更新单个指标（简洁版 - 兼容旧版和新版）
-function updateIndicator(name, value, status, hint) {
-  // 检查是旧版UI还是新版UI
-  const element = document.getElementById(`indicator${name}`)
-  if (!element) return
-
-  // 判断卡片类型
-  const isNewCard = element.classList.contains('indicator-card')
-  
-  if (isNewCard) {
-    // 新版卡片 - 调用新函数
-    updateIndicatorCard(name, calculateIndicatorScore(name, value), status, getStatusText(status), hint)
-  } else {
-    // 旧版卡片 - 保持原有逻辑
-    const valueElem = document.getElementById(`indicator${name}Value`)
-    const hintElem = document.getElementById(`indicator${name}Note`)
-    const statusElem = document.getElementById(`indicator${name}Status`)
-    
-    // 添加实时更新闪烁效果
-    if (value !== '--') {
-      element.classList.remove('data-updating')
-      void element.offsetWidth
-      element.classList.add('data-updating')
-    }
-    
-    if (valueElem) valueElem.textContent = value
-    if (hintElem) hintElem.textContent = hint
-
-    // 更新状态
-    element.className = `indicator-item ${status}`
-    
-    // 状态标签
-    const statusText = {
-      bullish: '多头',
-      bearish: '空头',
-      oversold: '超卖',
-      overbought: '超买',
-      neutral: '等待'
-    }
-    
-    if (statusElem) {
-      statusElem.textContent = statusText[status] || '等待'
-    }
-  }
-}
-
-// 根据指标名称和数值计算分数
-function calculateIndicatorScore(name, value) {
-  if (typeof value !== 'number' || value === '--') return '--'
-  
-  switch(name) {
-    case 'RSI':
-      return calculateRSIScore(value)
-    case 'MACD':
-      return calculateMACDScore(value)
-    case 'KDJ':
-      return calculateKDJScore(value)
-    case 'BOLL':
-      // BOLL的值是百分比字符串，需要解析
-      if (typeof value === 'string' && value.includes('%')) {
-        const percent = parseFloat(value)
-        return calculateBOLLScore(percent)
-      }
-      return 50
-    case 'TREND':
-      // 趋势指标已经有专门的函数
-      return 50  // 默认值
-    default:
-      return 50
-  }
-}
-
-// 获取状态文本
-function getStatusText(status) {
-  const statusTextMap = {
-    bullish: '多头',
-    bearish: '空头',
-    oversold: '超卖',
-    overbought: '超买',
-    neutral: '等待',
-    bullish_strong: '强多',
-    bearish_strong: '强空'
-  }
-  return statusTextMap[status] || '等待'
-}
 
 // 生成指标备注
 function generateMACDNote(result) {
@@ -3157,7 +2933,7 @@ function bubbleSpeak(type = 'waiting') {
   }
 }
 
-// 更新泡泡状态和内容
+// 更新泡泡状态和内容 - 修复版本
 function updateBubbleSpeech(result, score, signalType) {
   const bubbleBox = document.getElementById('bubbleSpeechBox')
   const bubbleTitle = document.getElementById('bubbleTitle')
@@ -3167,44 +2943,61 @@ function updateBubbleSpeech(result, score, signalType) {
   // 重置样式
   bubbleBox.className = 'bubble-speech-box'
   
+  // 获取绝对值和方向
+  const absScore = Math.abs(score)
+  const isLong = signalType === 'long'
+  const isShort = signalType === 'short'
+  
   // 根据信号类型确定泡泡状态和说话内容
   let speechType = 'waiting'
   let title = '🫧 等待信号...'
   
-  if (score >= 80 && signalType === 'long') {
-    bubbleBox.classList.add('long')
-    speechType = 'strongLong'
-    title = '🟢🟢 强势做多'
-    bubbleSpeak('strongLong')
-  } else if (score >= 60 && signalType === 'long') {
-    bubbleBox.classList.add('long')
-    speechType = 'long'
-    title = '🟢 可以做多'
-    bubbleSpeak('long')
-  } else if (score >= 40 && score < 60) {
+  // ★★★ 核心判断逻辑：先判断方向，再判断强度 ★★★
+  if (absScore === 0 || score === 0) {
+    // 无信号
+    title = '🫧 等待信号...'
+    bubbleSpeak('waiting')
+  } else if (isLong) {
+    // 做多方向
+    if (absScore >= 85) {
+      bubbleBox.classList.add('long')
+      speechType = 'strongLong'
+      title = '🟢🟢 强势做多'
+      bubbleSpeak('strongLong')
+    } else if (absScore >= 60) {
+      bubbleBox.classList.add('long')
+      speechType = 'long'
+      title = '🟢 偏多观察'
+      bubbleSpeak('long')
+    } else {
+      bubbleBox.classList.add('warning')
+      speechType = 'neutral'
+      title = '🟡 偏多观望'
+      bubbleSpeak('neutral')
+    }
+  } else if (isShort) {
+    // 做空方向
+    if (absScore >= 85) {
+      bubbleBox.classList.add('short')
+      speechType = 'strongShort'
+      title = '🔴🔴 强势做空'
+      bubbleSpeak('strongShort')
+    } else if (absScore >= 60) {
+      bubbleBox.classList.add('short')
+      speechType = 'short'
+      title = '🔴 偏空观察'
+      bubbleSpeak('short')
+    } else {
+      bubbleBox.classList.add('warning')
+      speechType = 'neutral'
+      title = '🟡 偏空观望'
+      bubbleSpeak('neutral')
+    }
+  } else {
+    // 无方向信号（neutral）
     bubbleBox.classList.add('warning')
     speechType = 'neutral'
     title = '🟡 观望等待'
-    bubbleSpeak('neutral')
-  } else if (score > 20 && signalType === 'short') {
-    bubbleBox.classList.add('short')
-    speechType = 'short'
-    title = '🔴 可以做空'
-    bubbleSpeak('short')
-  } else if (score <= 20 && signalType === 'short') {
-    bubbleBox.classList.add('short')
-    speechType = 'strongShort'
-    title = '🔴🔴 强势做空'
-    bubbleSpeak('strongShort')
-  } else if (score > 50) {
-    bubbleBox.classList.add('warning')
-    speechType = 'neutral'
-    title = '🟡 偏多观望'
-    bubbleSpeak('neutral')
-  } else if (score < 50) {
-    bubbleBox.classList.add('warning')
-    speechType = 'neutral'
-    title = '🟡 偏空观望'
     bubbleSpeak('neutral')
   }
   
@@ -3257,44 +3050,68 @@ function updateCatMood(result) {
   
   // 更新分数指示器（兼容旧ID）
   const scoreEl = document.getElementById('aiScoreValue')
+  const absScore = Math.abs(score)
+  const isLong = result?.type === 'long'
+  const isShort = result?.type === 'short'
+  
   if (scoreEl) {
-    scoreEl.textContent = score > 0 ? score : '--'
+    // ★ 显示绝对值分数，负数用括号显示
+    if (score === 0) {
+      scoreEl.textContent = '--'
+    } else {
+      scoreEl.textContent = absScore
+    }
     scoreEl.className = 'score-value'
-    if (result?.type === 'long') {
+    if (isLong) {
       scoreEl.classList.add('long')
-    } else if (result?.type === 'short') {
+    } else if (isShort) {
       scoreEl.classList.add('short')
     }
   }
   
-  // ★ 更新操作建议区域 ★（口语化版）
+  // ★ 更新操作建议区域 ★（口语化版）- 修复版本
   const adviceBadge = document.getElementById('adviceBadge')
   const adviceText = document.getElementById('adviceText')
   const adviceBox = document.getElementById('actionAdvice')
   if (adviceBadge && adviceText && adviceBox) {
     adviceBox.className = 'action-badge-box'  // 重置样式
-    if (score >= 80) {
-      adviceBadge.textContent = '🟢🟢 强势做多'
-      adviceBox.classList.add('long')
-      adviceText.textContent = '非常安全！可以考虑重仓'
-    } else if (score >= 60) {
-      adviceBadge.textContent = '🟢 可以做多'
-      adviceBox.classList.add('long')
-      adviceText.textContent = '比较安全，可以轻仓试试'
-    } else if (score > 50) {
+    
+    if (absScore === 0 || score === 0) {
+      // 无信号
       adviceBadge.textContent = '🟡 观望'
-      adviceText.textContent = '还不够安全，再等等看'
-    } else if (score >= 40) {
-      adviceBadge.textContent = '🟡 观望'
-      adviceText.textContent = '不太安全，建议观望'
-    } else if (score > 20) {
-      adviceBadge.textContent = '🔴 可以做空'
-      adviceBox.classList.add('short')
-      adviceText.textContent = '有点危险了，可以轻仓做空'
+      adviceText.textContent = '等待入场信号...'
+    } else if (isLong) {
+      // 做多方向
+      if (absScore >= 85) {
+        adviceBadge.textContent = '🟢🟢 强势做多'
+        adviceBox.classList.add('long')
+        adviceText.textContent = '非常安全！可以考虑重仓'
+      } else if (absScore >= 60) {
+        adviceBadge.textContent = '🟢 偏多观察'
+        adviceBox.classList.add('long')
+        adviceText.textContent = '比较安全，可以轻仓试试'
+      } else {
+        adviceBadge.textContent = '🟡 偏多观望'
+        adviceText.textContent = '还不够安全，建议观望'
+      }
+    } else if (isShort) {
+      // 做空方向
+      if (absScore >= 85) {
+        adviceBadge.textContent = '🔴🔴 强势做空'
+        adviceBox.classList.add('short')
+        adviceText.textContent = '非常危险！可以考虑重仓做空'
+      } else if (absScore >= 60) {
+        adviceBadge.textContent = '🔴 偏空观察'
+        adviceBox.classList.add('short')
+        adviceText.textContent = '有点危险了，可以轻仓做空'
+      } else {
+        adviceBadge.textContent = '🟡 偏空观望'
+        adviceText.textContent = '风险较大，建议观望'
+      }
     } else {
-      adviceBadge.textContent = '🔴🔴 强势做空'
-      adviceBox.classList.add('short')
-      adviceText.textContent = '非常危险！可以考虑重仓做空'
+      // 无方向信号
+      adviceBadge.textContent = '🟡 观望等待'
+      adviceText.textContent = '方向不明，保持观望'
     }
   }
   
@@ -4538,7 +4355,7 @@ function updatePositionCard() {
   }
 }
 
-// 更新信号指示器
+// 更新信号指示器 - 修复版本
 function updateSignalIndicator() {
   const signalEl = document.getElementById('currentSignal')
   if (!signalEl) return
@@ -4547,32 +4364,67 @@ function updateSignalIndicator() {
   const textEl = signalEl.querySelector('.signal-text')
   
   // 从评分系统获取当前信号
-  const score = window.lastScore || 50
-  const direction = window.lastDirection || ''
+  const rawScore = window.lastScore || 0
+  const absScore = Math.abs(rawScore)  // 绝对值用于判断强度
+  const isPositive = rawScore > 0  // 正数表示做多，负数表示做空
+  const direction = window.lastDirection || (isPositive ? 'long' : 'short')
   
-  if (score >= 70) {
-    if (dotEl) {
-      dotEl.className = 'signal-dot buy'
-    }
-    if (textEl) {
-      textEl.textContent = '做多信号 (' + score + '分)'
-      textEl.style.color = '#ef4444'
-    }
-  } else if (score <= 30) {
-    if (dotEl) {
-      dotEl.className = 'signal-dot sell'
-    }
-    if (textEl) {
-      textEl.textContent = '做空信号 (' + score + '分)'
-      textEl.style.color = '#22c55e'
-    }
-  } else {
-    if (dotEl) {
-      dotEl.className = 'signal-dot waiting'
-    }
+  // 清除之前的样式
+  if (dotEl) {
+    dotEl.className = 'signal-dot'
+  }
+  if (textEl) {
+    textEl.style.color = ''
+  }
+  
+  // 根据分数和方向显示信号
+  if (absScore === 0 || rawScore === 0) {
+    // 无信号
+    if (dotEl) dotEl.className = 'signal-dot waiting'
     if (textEl) {
       textEl.textContent = '等待信号...'
       textEl.style.color = '#94a3b8'
+    }
+  } else if (absScore >= 85) {
+    // ★ 85分以上：强信号
+    if (isPositive) {
+      // 做多信号
+      if (dotEl) dotEl.className = 'signal-dot buy'
+      if (textEl) {
+        textEl.textContent = '做多信号 (' + absScore + '分)'
+        textEl.style.color = '#10b981'  // 绿色
+      }
+    } else {
+      // 做空信号
+      if (dotEl) dotEl.className = 'signal-dot sell'
+      if (textEl) {
+        textEl.textContent = '做空信号 (' + absScore + '分)'
+        textEl.style.color = '#ef4444'  // 红色
+      }
+    }
+  } else if (absScore >= 60) {
+    // ★ 60-84分：观察信号
+    if (isPositive) {
+      // 偏多观察
+      if (dotEl) dotEl.className = 'signal-dot buy waiting'
+      if (textEl) {
+        textEl.textContent = '偏多观察 (' + absScore + '分)'
+        textEl.style.color = '#34d399'  // 浅绿色
+      }
+    } else {
+      // 偏空观察
+      if (dotEl) dotEl.className = 'signal-dot sell waiting'
+      if (textEl) {
+        textEl.textContent = '偏空观察 (' + absScore + '分)'
+        textEl.style.color = '#f87171'  // 浅红色
+      }
+    }
+  } else {
+    // ★ 60分以下：观望
+    if (dotEl) dotEl.className = 'signal-dot waiting'
+    if (textEl) {
+      textEl.textContent = '观望中 (' + absScore + '分)'
+      textEl.style.color = '#94a3b8'  // 灰色
     }
   }
 }
@@ -5861,6 +5713,13 @@ const AutoTrade = {
         return
       }
       
+      // 只有85分以上的信号才会触发自动化交易
+      if (Math.abs(score) < 85) {
+        this.log('info', '信号分数低于85，不触发自动化交易', { score })
+        console.log('[AutoTrade] 信号分数低于85，不触发自动化交易:', score)
+        return
+      }
+      
       if (direction !== 'long' && direction !== 'short') {
         this.log('error', '信号方向无效', { direction })
         console.error('[AutoTrade] 信号方向无效:', { direction })
@@ -5971,8 +5830,22 @@ const AutoTrade = {
   // 发送通知
   sendNotification(direction, score, price, support, resistance) {
     if (typeof Android !== 'undefined' && Android.showNotification) {
-      const title = direction === 'long' ? '🟢 做多信号' : '🔴 做空信号'
-      const body = `评分: ${score}分 | 价格: $${price.toFixed(0)}\n支撑位: ${support ? support.toFixed(2) : '无'} | 阻力位: ${resistance ? resistance.toFixed(2) : '无'}`
+      const absScore = Math.abs(score)
+      let title
+      
+      if (absScore >= 85) {
+        // 85分以上：显示做多/做空信号
+        title = direction === 'long' ? '🟢 做多信号' : '🔴 做空信号'
+      } else if (absScore >= 60 && absScore < 85) {
+        // 60-84分：显示偏多/偏空观察
+        title = direction === 'long' ? '🟢 偏多观察' : '🔴 偏空观察'
+      } else {
+        // 60分以下：不发送通知
+        return
+      }
+      
+      // 构建更详细的通知内容
+      const body = `📊 信号详情\n分数: ${score}分\n价格: $${price.toFixed(2)}\n\n📈 市场分析\n支撑位: $${support ? support.toFixed(2) : '无'}\n阻力位: $${resistance ? resistance.toFixed(2) : '无'}\n\n🎯 交易建议\n${absScore >= 85 ? '🚨 强烈信号：建议立即关注并准备操作！' : '⚠️ 等待85分以上信号再操作'}`
       Android.showNotification(title, body)
     }
     console.log('[AutoTrade] 通知已发送:', direction, score, support, resistance)

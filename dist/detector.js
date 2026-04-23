@@ -554,23 +554,22 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var isTrendAligned = (signalType === 'long' && trend.trend === 'up') || 
                       (signalType === 'short' && trend.trend === 'down');
   
-  if (isTrendAligned) {
-    // 趋势一致：根据趋势强度给予高分
-    trendScore = 8 + (trend.trendStrength / 100) * 9;
-    trendLabel = '趋势一致(' + trend.trend + ')';
+  if (isTrendAligned && trend.trendStrength >= 70) {
+    // 强势趋势：17分
+    trendScore = 17;
+    trendLabel = '强势趋势(' + trend.trend + ')';
+  } else if (isTrendAligned && trend.trendStrength >= 40) {
+    // 一般趋势：11分
+    trendScore = 11;
+    trendLabel = '一般趋势(' + trend.trend + ')';
   } else if (trend.trend === 'sideways') {
-    // 震荡市：给予中等分数
-    trendScore = 10;
-    trendLabel = '震荡市';
+    // 中性/震荡：3分
+    trendScore = 3;
+    trendLabel = '中性震荡';
   } else {
-    // 趋势相反：给予低分，但考虑变盘可能性
-    if (trend.isTrendReversal && trend.reversalStrength >= 60) {
-      trendScore = 8; // 变盘信号较强时给予中等分数
-      trendLabel = '趋势反转信号';
-    } else {
-      trendScore = 3;
-      trendLabel = '趋势相反';
-    }
+    // 趋势相反：3分
+    trendScore = 3;
+    trendLabel = '趋势相反';
   }
   
   score += trendScore;
@@ -593,14 +592,15 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var volatilityLabel = '';
   
   if (atrPercent >= 2 && atrPercent <= 4) {
+    // 理想波动率 2-4% → 17分
     volatilityScore = 17;
     volatilityLabel = '理想波动率(' + atrPercent.toFixed(2) + '%)';
   } else if (atrPercent >= 1 && atrPercent <= 5) {
-    // 根据波动率偏离理想范围的程度调整分数
-    var deviation = Math.min(Math.abs(atrPercent - 3), 2);
-    volatilityScore = 11 + (1 - deviation / 2) * 6;
+    // 良好波动率 1-5% → 11分
+    volatilityScore = 11;
     volatilityLabel = '良好波动率(' + atrPercent.toFixed(2) + '%)';
   } else if (atrPercent >= 0.5 && atrPercent <= 8) {
+    // 一般波动率 0.5-8% → 6分
     volatilityScore = 6;
     volatilityLabel = '一般波动率(' + atrPercent.toFixed(2) + '%)';
   } else {
@@ -622,15 +622,16 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var volumeLabel = '';
   var volumeRatio = lastVolume / avgVolume;
   
-  if (lastVolume > avgVolume * 1.5) {
-    // 根据放量程度动态调整分数
-    var excessRatio = Math.min(volumeRatio - 1.5, 1);
-    volumeScore = 6 + excessRatio * 2;
+  if (lastVolume >= avgVolume * 1.5) {
+    // 1.5倍→6分
+    volumeScore = 6;
     volumeLabel = '放量(' + volumeRatio.toFixed(2) + '倍)';
-  } else if (lastVolume > avgVolume * 1.2) {
+  } else if (lastVolume >= avgVolume * 1.2) {
+    // 1.2倍→4分
     volumeScore = 4;
     volumeLabel = '温和放量(' + volumeRatio.toFixed(2) + '倍)';
   } else if (lastVolume > avgVolume) {
+    // 轻微→2分
     volumeScore = 2;
     volumeLabel = '轻微放量(' + volumeRatio.toFixed(2) + '倍)';
   } else {
@@ -1032,10 +1033,15 @@ async function detectSignal(interval) {
       CONFIG.ACCOUNT_BALANCE || 10000
     ) : null;
   
+  // 修复：signalConfidence应该根据信号类型保持正负号
+  // 对于做多信号，signalStrength是正数，signalConfidence保持正数
+  // 对于做空信号，signalStrength是正数，signalConfidence转为负数
+  const signalConfidence = signalType === 'long' ? signalStrength : -signalStrength;
+  
   var result = {
     type: signalType,
-    signalStrength: signalStrength,
-    signalConfidence: signalStrength, // 与signalStrength保持一致，供UI和推送使用
+    signalStrength: Math.abs(signalStrength), // signalStrength保持正数
+    signalConfidence: signalConfidence, // signalConfidence保持正负号
     starRating: positionAdvice ? positionAdvice.starRating : '无信号',
     bars: bars,
     higherBars: higherBars,
