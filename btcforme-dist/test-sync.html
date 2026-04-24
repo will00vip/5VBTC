@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>推送与显示同步测试</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0e17;
+      color: #e2e8f0;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .card {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8));
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    .score-dial {
+      width: 200px;
+      height: 200px;
+      margin: 0 auto 30px;
+      position: relative;
+    }
+    .score-circle {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+    .score-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 36px;
+      font-weight: bold;
+    }
+    .status-text {
+      text-align: center;
+      font-size: 16px;
+      margin-bottom: 20px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-success {
+      background: #10b981;
+      color: white;
+    }
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+    }
+    .btn-secondary {
+      background: #6b7280;
+      color: white;
+    }
+    .market-info {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .info-item {
+      background: rgba(30, 41, 59, 0.8);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(59, 130, 246, 0.1);
+    }
+    .info-label {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+    .info-value {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .push-history {
+      margin-top: 30px;
+    }
+    .push-item {
+      background: rgba(30, 41, 59, 0.6);
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      border-left: 4px solid #3b82f6;
+    }
+    .push-time {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .push-content {
+      font-size: 14px;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>推送与显示同步测试</h1>
+    
+    <!-- 评分圆盘 -->
+    <div class="card">
+      <div class="score-dial">
+        <svg class="score-circle" viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="90" fill="none" stroke="#334155" stroke-width="10" />
+          <circle id="scoreProgress" cx="100" cy="100" r="90" fill="none" stroke="#10b981" stroke-width="10" stroke-linecap="round" />
+        </svg>
+        <div id="scoreText" class="score-text">观望</div>
+      </div>
+      <div id="statusText" class="status-text">等待高质信号</div>
+      
+      <!-- 控制按钮 -->
+      <div class="controls">
+        <button class="btn btn-success" onclick="simulatePush(85, 'long')">模拟做多推送</button>
+        <button class="btn btn-danger" onclick="simulatePush(75, 'short')">模拟做空推送</button>
+        <button class="btn btn-secondary" onclick="clearCache()">清除缓存</button>
+      </div>
+      
+      <!-- 市场信息 -->
+      <div class="market-info">
+        <div class="info-item">
+          <div class="info-label">MA20</div>
+          <div class="info-value">72,765.42</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">MA60</div>
+          <div class="info-value">72,193.46</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">趋势</div>
+          <div class="info-value">空头</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">价格偏离</div>
+          <div class="info-value">-0.24%</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 推送历史 -->
+    <div class="card push-history">
+      <h3>推送历史</h3>
+      <div id="pushHistory"></div>
+    </div>
+  </div>
+  
+  <script>
+    // 评分缓存
+    let scoreCache = {
+      pushScore: 0,
+      pushTime: 0,
+      validUntil: 0
+    };
+    
+    // 推送历史
+    let pushHistory = [];
+    
+    // 初始化
+    function init() {
+      updateScoreDisplay(0, false, 'sideways');
+      updatePushHistory();
+    }
+    
+    // 模拟推送
+    function simulatePush(score, direction) {
+      const isLong = direction === 'long';
+      const displayScore = isLong ? score : -score;
+      
+      // 更新缓存
+      scoreCache = {
+        pushScore: displayScore,
+        pushTime: Date.now(),
+        validUntil: Date.now() + 5 * 60 * 1000 // 5分钟
+      };
+      
+      // 添加到推送历史
+      pushHistory.unshift({
+        time: new Date().toLocaleString(),
+        direction: isLong ? '做多' : '做空',
+        score: score,
+        message: `${isLong ? '做多' : '做空'}信号 ${score}分`
+      });
+      
+      // 限制历史记录数量
+      if (pushHistory.length > 10) {
+        pushHistory = pushHistory.slice(0, 10);
+      }
+      
+      // 更新显示
+      updateScoreDisplay(displayScore, true, isLong ? 'up' : 'down');
+      updatePushHistory();
+      
+      // 显示推送提示
+      showToast(`${isLong ? '做多' : '做空'}信号 ${score}分 已推送`);
+    }
+    
+    // 清除缓存
+    function clearCache() {
+      scoreCache = {
+        pushScore: 0,
+        pushTime: 0,
+        validUntil: 0
+      };
+      updateScoreDisplay(0, false, 'sideways');
+      showToast('缓存已清除');
+    }
+    
+    // 更新评分显示
+    function updateScoreDisplay(score, hasSignal, trend) {
+      const scoreText = document.getElementById('scoreText');
+      const statusText = document.getElementById('statusText');
+      const scoreProgress = document.getElementById('scoreProgress');
+      
+      // 检查缓存
+      const now = Date.now();
+      let displayScore = score;
+      let displayHasSignal = hasSignal;
+      
+      if (scoreCache.pushScore !== 0 && now < scoreCache.validUntil) {
+        displayScore = scoreCache.pushScore;
+        displayHasSignal = true;
+      }
+      
+      const absScore = Math.abs(displayScore);
+      const hasStrongSignal = displayHasSignal && absScore >= 60;
+      
+      if (hasStrongSignal) {
+        const isLong = displayScore > 0;
+        
+        // 计算进度
+        const circumference = 2 * Math.PI * 90;
+        const percentage = absScore / 100;
+        const offset = circumference - percentage * circumference;
+        
+        scoreProgress.style.strokeDasharray = `${circumference} ${circumference}`;
+        scoreProgress.style.strokeDashoffset = offset;
+        scoreProgress.style.stroke = isLong ? '#10b981' : '#ef4444';
+        
+        scoreText.textContent = (isLong ? '+' : '-') + absScore;
+        scoreText.style.color = isLong ? '#10b981' : '#ef4444';
+        
+        statusText.textContent = `${isLong ? '做多' : '做空'}信号 ${absScore}分`;
+      } else {
+        // 无信号状态
+        let statusLabel = '观望';
+        let statusColor = '#6b7280';
+        let displayText = '观望';
+        
+        if (trend === 'up') {
+          statusLabel = '偏多观望';
+          statusColor = '#10b981';
+          displayText = '偏多';
+        } else if (trend === 'down') {
+          statusLabel = '偏空观望';
+          statusColor = '#ef4444';
+          displayText = '偏空';
+        } else {
+          statusLabel = '震荡整理';
+          statusColor = '#f59e0b';
+          displayText = '震荡';
+        }
+        
+        const circumference = 2 * Math.PI * 90;
+        const percentage = 0.5;
+        const offset = circumference - percentage * circumference;
+        
+        scoreProgress.style.strokeDasharray = `${circumference} ${circumference}`;
+        scoreProgress.style.strokeDashoffset = offset;
+        scoreProgress.style.stroke = statusColor;
+        
+        scoreText.textContent = displayText;
+        scoreText.style.color = statusColor;
+        
+        statusText.textContent = statusLabel + ' - 等待高质信号';
+      }
+    }
+    
+    // 更新推送历史
+    function updatePushHistory() {
+      const historyEl = document.getElementById('pushHistory');
+      if (pushHistory.length === 0) {
+        historyEl.innerHTML = '<p>暂无推送记录</p>';
+        return;
+      }
+      
+      historyEl.innerHTML = pushHistory.map(item => `
+        <div class="push-item">
+          <div class="push-time">${item.time}</div>
+          <div class="push-content">${item.message}</div>
+        </div>
+      `).join('');
+    }
+    
+    // 显示提示
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #3b82f6;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        z-index: 1000;
+        animation: slideIn 0.3s ease-out;
+      `;
+      toast.textContent = message;
+      
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-in';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+    
+    // 添加动画样式
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    // 初始化
+    init();
+    
+    // 定时更新显示（模拟实时数据）
+    setInterval(() => {
+      updateScoreDisplay(0, false, 'sideways');
+    }, 1000);
+  </script>
+</body>
+</html>

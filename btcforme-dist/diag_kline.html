@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>K线诊断</title>
+<style>
+body { background: #0a0e17; color: #fff; font-family: monospace; padding: 20px; }
+#log { font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+.pass { color: #22c55e; }
+.fail { color: #ef4444; }
+.info { color: #60a5fa; }
+</style>
+</head>
+<body>
+<h3>🔍 K线诊断</h3>
+<div id="log"></div>
+<script>
+const log = document.getElementById('log');
+function add(msg, type='info') {
+  const d = document.createElement('div');
+  d.className = type;
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  log.appendChild(d);
+}
+
+async function testSource(name, url) {
+  try {
+    const t0 = Date.now();
+    const r = await fetch(url, {mode:'cors'});
+    const ms = Date.now() - t0;
+    const text = await r.text();
+    add(`${name}: ✅ ${r.status} (${ms}ms) - ${text.substring(0,100)}`, 'pass');
+    return true;
+  } catch(e) {
+    add(`${name}: ❌ ${e.message}`, 'fail');
+    return false;
+  }
+}
+
+async function run() {
+  add('开始诊断...\n', 'info');
+  
+  // 检查CanvasChart
+  if (window.CanvasChart) add('CanvasChart: ✅ 已加载', 'pass');
+  else add('CanvasChart: ❌ 未加载', 'fail');
+  
+  // 检查fetchKlines
+  if (window.fetchKlines) add('fetchKlines: ✅ 已导出', 'pass');
+  else add('fetchKlines: ❌ 未导出', 'fail');
+  
+  // 检查LWChart
+  if (window.LWChart) add('LWChart: ✅ 已导出', 'pass');
+  else add('LWChart: ❌ 未导出', 'fail');
+  
+  // 检查容器
+  const c = document.getElementById('lwChartContainer');
+  if (c) add(`lwChartContainer: ✅ 尺寸=${c.offsetWidth}x${c.offsetHeight}`, 'pass');
+  else add('lwChartContainer: ❌ 不存在', 'fail');
+  
+  add('\n--- 数据源测试 ---\n', 'info');
+  
+  // 测试各数据源
+  await testSource('BinanceVision', 'https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=5');
+  await testSource('Binance', 'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=5');
+  await testSource('HTX', 'https://api.huobi.pro/market/history/kline?symbol=btcusdt&period=15min&size=5');
+  await testSource('OKX', 'https://www.okx.com/api/v5/market/candles?instId=BTC-USDT-SWAP&bar=15m&limit=5');
+  
+  add('\n--- fetchKlines实际调用 ---\n', 'info');
+  if (window.fetchKlines) {
+    try {
+      const bars = await window.fetchKlines('15m', 5);
+      if (bars && bars.length > 0) {
+        add(`fetchKlines(15m,5): ✅ 返回${bars.length}根K线`, 'pass');
+        add(`最新: time=${bars[bars.length-1].time}, close=${bars[bars.length-1].close}`, 'info');
+      } else {
+        add('fetchKlines: ❌ 返回空数据', 'fail');
+      }
+    } catch(e) {
+      add(`fetchKlines: ❌ ${e.message}`, 'fail');
+    }
+  }
+  
+  add('\n--- CanvasChart初始化 ---\n', 'info');
+  if (window.CanvasChart && c) {
+    try {
+      window.CanvasChart.init('lwChartContainer');
+      add('CanvasChart.init: ✅', 'pass');
+      if (window.fetchKlines) {
+        const bars = await window.fetchKlines('15m', 50);
+        if (bars) {
+          window.CanvasChart.setData(bars);
+          add(`setData: ✅ ${bars.length}根K线`, 'pass');
+        }
+      }
+    } catch(e) {
+      add(`CanvasChart: ❌ ${e.message}`, 'fail');
+    }
+  }
+  
+  add('\n诊断完成', 'info');
+}
+run();
+</script>
+</body>
+</html>
