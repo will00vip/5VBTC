@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════
-// BTC三步法专业交易系统 v6.2 - 三周期共振算法
+// 雷达专业交易系统 v6.2 - 三周期共振算法
 // ═══════════════════════════════════════════════
 
 // ── 专业配置 ──
@@ -725,37 +725,39 @@ function calculatePositionAdvice(signalStrength, entryPrice, stopLoss, accountBa
 // ── 多源降级数据获取 + 60s缓存 ──
 const _klinesCache = {}
 
-// 所有数据源（按优先级）
+// 当前交易对
+var _currentSymbol = 'BTCUSDT';
+
+// 切换交易对
+function setSymbol(symbol) {
+  symbol = (symbol || 'BTCUSDT').toUpperCase();
+  if (!['BTCUSDT', 'ETHUSDT'].includes(symbol)) {
+    console.warn('[Symbol] 不支持的交易对:', symbol);
+    return false;
+  }
+  // 清除缓存
+  Object.keys(_klinesCache).forEach(k => delete _klinesCache[k]);
+  _currentSymbol = symbol;
+  console.log('[Symbol] 已切换到:', symbol);
+  return true;
+}
+
+// 获取当前交易对
+function getSymbol() {
+  return _currentSymbol;
+}
+
+// 所有数据源（按优先级）- 使用动态symbol
 const DATA_SOURCES_ALL = [
   {
     name: 'BinanceVision',
-    klineUrl: (iv, lim) => `https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=${iv}&limit=${lim}`,
+    klineUrl: (iv, lim) => `https://data-api.binance.vision/api/v3/klines?symbol=${_currentSymbol}&interval=${iv}&limit=${lim}`,
     parse: raw => Array.isArray(raw) ? raw.map(k => ({ time: Math.floor(+k[0]/1000), open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5] })) : null
   },
   {
-    name: 'HTX',
-    klineUrl: (iv, lim) => {
-      // HTX interval mapping
-      const m = { '1m':'1min','3m':'3min','5m':'5min','15m':'15min','30m':'30min','1h':'60min','2h':'120min','4h':'4hour','6h':'6hour','12h':'12hour','1d':'1day','3d':'3day','1w':'1week' }
-      return `https://api.huobi.pro/market/history/kline?symbol=btcusdt&period=${m[iv]||'15min'}&size=${lim}`
-    },
-    parse: raw => {
-      const list = raw && raw.data
-      if (!Array.isArray(list)) return null
-      return list.reverse().map(k => ({ time: +k.id, open:+k.open, high:+k.high, low:+k.low, close:+k.close, volume:+k.vol }))
-    }
-  },
-  {
-    name: 'OKX',
-    klineUrl: (iv, lim) => {
-      const m = { '1m':'1m','3m':'3m','5m':'5m','15m':'15m','30m':'30m','1h':'1H','2h':'2H','4h':'4H','6h':'6H','12h':'12H','1d':'1D','3d':'3D','1w':'1W' }
-      return `https://www.okx.com/api/v5/market/candles?instId=BTC-USDT-SWAP&bar=${m[iv]||'15m'}&limit=${lim}`
-    },
-    parse: raw => {
-      const list = raw && raw.data
-      if (!Array.isArray(list)) return null
-      return list.reverse().map(k => ({ time: Math.floor(+k[0]/1000), open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5] }))
-    }
+    name: 'Binance',
+    klineUrl: (iv, lim) => `https://api.binance.com/api/v3/klines?symbol=${_currentSymbol}&interval=${iv}&limit=${lim}`,
+    parse: raw => Array.isArray(raw) ? raw.map(k => ({ time: Math.floor(+k[0]/1000), open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5] })) : null
   }
 ]
 
@@ -803,7 +805,9 @@ function refreshKlines(interval, limit = 200) {
   return fetchKlines(interval, limit)
 }
 
-window.BTCKlines = { fetchKlines, refreshKlines, cache: _klinesCache }
+window.BTCKlines = { fetchKlines, refreshKlines, cache: _klinesCache, setSymbol, getSymbol, symbol: _currentSymbol }
+window.setSymbol = setSymbol
+window.getSymbol = getSymbol
 // 全局暴露 fetchKlines，让 ui.js 里的 runSimulation 可以直接调用
 window.fetchKlines = fetchKlines
 
@@ -826,8 +830,9 @@ function startWebSocket() {
     return
   }
   
-  // Binance K线WebSocket（1分钟K线）
-  const wsUrl = 'wss://stream.binance.com:9443/ws/btcusdt@kline_1m'
+  // Binance K线WebSocket（1分钟K线）- 使用动态symbol
+  const symbolLower = _currentSymbol.toLowerCase();
+  const wsUrl = `wss://stream.binance.com:9443/ws/${symbolLower}@kline_1m`
   
   console.log('[WebSocket] 正在连接...')
   updateWsStatus('connecting')
@@ -947,9 +952,15 @@ function getWsStatus() {
 }
 
 // ══════════════════════════════════════════
-// 主检测函数
+// 主检测函数 - 使用5维度评分系统
 // ══════════════════════════════════════════
 async function detectSignal(interval = '15m') {
+  // 调用5维度评分系统
+  if (typeof window.detectSignal5D !== 'undefined') {
+    return await window.detectSignal5D(interval)
+  }
+  
+  // 回退到原始检测
   try {
     // 获取当前周期数据
     const bars = await fetchKlines(interval, 200)
@@ -2706,7 +2717,8 @@ function startWS(interval) {
   stopWS()
 
   const streamInterval = INTERVAL_TO_WS[interval] || interval
-  const wsUrl = `wss://data-stream.binance.vision/stream?streams=btcusdt@kline_${streamInterval}`
+  const symbolLower = _currentSymbol.toLowerCase();
+  const wsUrl = `wss://data-stream.binance.vision/stream?streams=${symbolLower}@kline_${streamInterval}`
 
   function connect() {
     try {
@@ -3100,7 +3112,7 @@ const PushSystem = {
     const directionEmoji = signal.direction === 'long' ? '📈' : '📉'
     const scoreStars = '⭐'.repeat(signal.stars || 0)
     
-    return `${directionEmoji} BTC三步法信号${scoreStars}
+    return `${directionEmoji} 雷达信号${scoreStars}
 价格: $${signal.entryPrice?.toFixed(2)}
 方向: ${signal.direction === 'long' ? '做多' : '做空'}
 目标: $${signal.targetPrice?.toFixed(2)}
@@ -3262,5 +3274,5 @@ window.drawMACDChart = drawMACDChart
 window.drawBOLLChart = drawBOLLChart
 window.drawIntegratedChart = drawIntegratedChart
 
-console.log('BTC三步法专业交易系统 v7.1 已加载 (LightweightCharts K线引擎)')
+console.log('雷达专业交易系统 v7.1 已加载 (LightweightCharts K线引擎)')
 console.log('推送系统（开单点位记录+成功率统计）已加载')

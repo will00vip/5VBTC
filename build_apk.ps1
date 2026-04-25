@@ -5,7 +5,7 @@
 Set-Location "d:\btc\btcforme\android"
 
 # 生成时间戳
-$timestamp = Get-Date -Format "yyyyMMddHHmmss"
+$timestamp = [DateTime]::Now.ToString("yyyyMMddHHmmss")
 
 # 设置正确的Java路径
 $javaHome = "C:\Program Files\Eclipse Adoptium\jdk-11.0.30.7-hotspot"
@@ -27,7 +27,7 @@ try {
 
         # 复制APK文件到根目录
         $sourceApk = "d:\btc\btcforme\android\app\build\outputs\apk\debug\app-debug.apk"
-        $destApk = "d:\btc\btcforme\autotrade-debug-$timestamp.apk"
+        $destApk = "d:\btc\btcforme\autotrade-debug-${timestamp}.apk"
 
         if (Test-Path $sourceApk) {
             Copy-Item -Path $sourceApk -Destination $destApk -Force

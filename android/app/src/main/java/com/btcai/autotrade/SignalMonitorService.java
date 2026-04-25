@@ -547,10 +547,24 @@ public class SignalMonitorService extends Service {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(), 
             detailIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        String emoji = direction.equals("做多") ? "🟢" : "🔴";
-        // 做空信号显示负分数
+        // 根据分数确定信号级别 — 强信号突出，观察👁温和
+        boolean isStrongSignal = Math.abs(score) >= 85;
+        String signalLevelText;
+        String levelIcon;  // 级别图标：强信号=闪电，观察=眼睛
+        String emoji;      // 方向emoji：强信号绿/红，观察蓝/橙
         String scoreDisplay = direction.equals("做空") ? "-" + Math.abs(score) : String.valueOf(score);
-        String content = emoji + " " + direction + "信号 | " + scoreDisplay + "分 | " + leverage + "x杠杆\n价格: $" + String.format("%.2f", price);
+        
+        if (direction.equals("做多")) {
+            emoji = isStrongSignal ? "🟢" : "🔵";
+            signalLevelText = isStrongSignal ? "做多信号" : "偏多观察";
+        } else {
+            emoji = isStrongSignal ? "🔴" : "🟠";
+            signalLevelText = isStrongSignal ? "做空信号" : "偏空观察";
+        }
+        levelIcon = isStrongSignal ? "🔥🔥" : "👁";
+        
+        String title = levelIcon + " " + signalLevelText;
+        String content = emoji + " " + scoreDisplay + "分  " + signalLevelText + " | " + leverage + "x杠杆\n价格: $" + String.format("%.2f", price);
         
         // 构建大文本通知内容
         StringBuilder bigText = new StringBuilder(content);
@@ -561,7 +575,7 @@ public class SignalMonitorService extends Service {
         bigText.append("\n\n点击通知查看完整详情");
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("🚨 BTC信号: " + direction + "!")
+            .setContentTitle(title)
             .setContentText(content)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(bigText.toString()))
             .setSmallIcon(android.R.drawable.ic_dialog_alert)

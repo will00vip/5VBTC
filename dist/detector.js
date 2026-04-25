@@ -1,4 +1,4 @@
-// detector.js - 专业交易算法模型 v5.0（浏览器版本）
+// detector.js - 5维度100分制打分系统 v1.0
 // ───────────────────────────────────────────────
 
 // 内存缓存（5s内复用，切换周期时清空）
@@ -6,7 +6,7 @@ var _cache = {};
 function getCacheKey(interval) { return interval; }
 function getCached(interval) {
   var c = _cache[getCacheKey(interval)];
-  if (c && Date.now() - c.ts < 5000) return c.data; // 缩短缓存时间到5秒
+  if (c && Date.now() - c.ts < 5000) return c.data; // 5秒缓存
   return null;
 }
 function setCache(interval, data) {
@@ -60,10 +60,10 @@ function checkSignalCooldown(lastSignal, currentType) {
   var lastSignalType = lastSignal.lastSignalType;
   var lastSignalScore = Math.abs(lastSignal.lastSignalScore || 0);
   
-  // 动态冷却时间设置 - 优化版本
-  var baseCooldown = 5 * 60 * 1000; // 基础冷却期5分钟（减少）
+  // 动态冷却时间设置
+  var baseCooldown = 5 * 60 * 1000; // 基础冷却期5分钟
   var sameDirectionCooldown = 10 * 60 * 1000; // 同方向信号冷却10分钟
-  var oppositeDirectionCooldown = 20 * 60 * 1000; // 相反方向信号冷却20分钟（增加）
+  var oppositeDirectionCooldown = 20 * 60 * 1000; // 相反方向信号冷却20分钟
   
   // 如果上次是高分信号(85+)，需要更长的冷却时间
   if (lastSignalScore >= 85) {
@@ -286,7 +286,7 @@ function determineTrend(bars) {
   var ma20 = ema20[n];
   var ma60 = ema60[n];
   
-  // 计算趋势强度 (0-100) - 使用更长周期减少短期波动影响
+  // 计算趋势强度 (0-100)
   var ma20Slope = (ema20[n] - ema20[Math.max(0, n - 10)]) / ema20[Math.max(0, n - 10)] * 100;
   var ma60Slope = (ema60[n] - ema60[Math.max(0, n - 20)]) / ema60[Math.max(0, n - 20)] * 100;
   var priceToMA20 = (price - ma20) / ma20 * 100;
@@ -341,7 +341,7 @@ function determineTrend(bars) {
   var momentumPrev = (closes[Math.max(0, n - 10)] - closes[Math.max(0, n - 20)]) / closes[Math.max(0, n - 20)] * 100;
   var momentumReversal = Math.sign(momentum) !== Math.sign(momentumPrev) && Math.abs(momentum) > 1;
   
-  // 变盘检测 - 增强版本
+  // 变盘检测
   if (goldenCross || deathCross || (ma20Break && ma60Break) || rsiReversal || kdjCross || momentumReversal) {
     isTrendReversal = true;
     
@@ -500,7 +500,7 @@ function checkMultiPeriodResonance(currentBars, higherBars) {
   };
 }
 
-/** 信号强度评分系统 - 直接100分制 */
+/** 信号强度评分系统 - 5维度100分制 */
 function calculateSignalStrength(signalType, conditions, resonance, bars) {
   var score = 0;
   var maxScore = 100;
@@ -545,7 +545,7 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
     });
   });
   
-  // 趋势强度评分 (0-17分) - 优化版本
+  // 趋势强度评分 (0-17分)
   var trend = determineTrend(bars);
   var trendScore = 0;
   var trendLabel = '';
@@ -647,8 +647,7 @@ function calculateSignalStrength(signalType, conditions, resonance, bars) {
   });
   
   // 添加随机波动因子，避免分数完全相同
-  var randomFactor = Math.random() * 2 - 1; // -1到1之间的随机数
-  score += randomFactor;
+  var randomFactor = 0; // 暂时禁用随机因子，避免分数意外超过85或低于60
   
   // 确保分数在合理范围内
   score = Math.min(maxScore, Math.max(0, score));
@@ -759,7 +758,7 @@ function getHigherInterval(interval) {
   return intervalMap[interval] || null;
 }
 
-/** 主检测函数 - 专业版 */
+/** 主检测函数 - 5维度打分系统 */
 async function detectSignal(interval) {
   interval = interval || '15m';
   var limit = 200;
@@ -792,7 +791,7 @@ async function detectSignal(interval) {
   var upperShadow = prevBar.high - Math.max(prevBar.open, prevBar.close);
   
   // 插针检测：要求影线至少是实体的3倍，且价格在K线中上部
-  // 多K线确认：前1-2根K线中只要有1根满足插针条件即可（改为OR逻辑，更宽松）
+  // 多K线确认：前1-2根K线中只要有1根满足插针条件即可
   var prevBody = Math.abs(prevPrevBar.close - prevPrevBar.open) || 0.01;
   var prevLowerShadow = Math.min(prevPrevBar.open, prevPrevBar.close) - prevPrevBar.low;
   var prevUpperShadow = prevPrevBar.high - Math.max(prevPrevBar.open, prevPrevBar.close);
@@ -805,7 +804,7 @@ async function detectSignal(interval) {
   var isLongPinPrev = prevLowerShadow >= prevBody * 2.5 && prevPrevBar.close > (prevPrevBar.low + (prevPrevBar.high - prevPrevBar.low) * 0.6);
   var isShortPinPrev = prevUpperShadow >= prevBody * 2.5 && prevPrevBar.close < (prevPrevBar.high - (prevPrevBar.high - prevPrevBar.low) * 0.6);
   
-  // 多K线确认：当前K线或前一根K线满足条件即可（OR逻辑，更容易触发信号）
+  // 多K线确认：当前K线或前一根K线满足条件即可
   var isLongPin = isLongPinCurrent || isLongPinPrev;
   var isShortPin = isShortPinCurrent || isShortPinPrev;
   
@@ -939,7 +938,7 @@ async function detectSignal(interval) {
   var longQualityScore = calculateQualityScore(signalQuality.long);
   var shortQualityScore = calculateQualityScore(signalQuality.short);
   
-  // 增强的做多信号条件（添加更多质量过滤）
+  // 增强的做多信号条件
   if (isLongPin && c2Long && c4Long && (longQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.goldenCross && longQualityScore >= 60))) {
     // 检查信号冷却
     var lastSignal = getLastSignalInfo();
@@ -951,7 +950,7 @@ async function detectSignal(interval) {
     }
   }
   
-  // 增强的做空信号条件（添加更多质量过滤）
+  // 增强的做空信号条件
   if (isShortPin && c2Short && c4Short && (shortQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.deathCross && shortQualityScore >= 60))) {
     // 检查信号冷却
     var lastSignal = getLastSignalInfo();
@@ -984,29 +983,23 @@ async function detectSignal(interval) {
   var signalStrength = 0;
   var scoreDetails = null;
   
-  // 直接使用100分制，做多为正值，做空为负值
+  // signalStrength总是正数（0-100）
   if (signalType && scoreResult) {
     var rawScore = scoreResult.rawScore;
     scoreDetails = scoreResult.details;
     
-    if (signalType === 'long') {
-      // 做多：0-100分
-      signalStrength = Math.round(rawScore);
-    } else {
-      // 做空：-100到0分
-      signalStrength = Math.round(-rawScore);
-    }
+    // signalStrength总是正数，使用Math.floor确保分数不会被四舍五入
+  signalStrength = Math.floor(rawScore);
+  
+  // 严格限制分数范围在0-100之间
+  signalStrength = Math.min(100, Math.max(0, signalStrength));
+  
+  // 横盘整理特殊处理：降低信号评分
     
-    // ★ 横盘整理特殊处理：在横盘整理时降低信号评分（减少降低幅度）
+    // 横盘整理特殊处理：降低信号评分
     if (trendInfo.trend === 'sideways') {
-      // 横盘整理时降低信号评分（从30分减少到15分）
-      var sidewaysReduction = 15; // 横盘整理时降低15分
-      if (signalType === 'long') {
-        signalStrength = Math.max(0, signalStrength - sidewaysReduction);
-      } else {
-        signalStrength = Math.min(0, signalStrength + sidewaysReduction);
-      }
-      console.log('[横盘整理] 信号评分已调整:', signalStrength);
+      var sidewaysReduction = 15;
+      signalStrength = Math.max(0, signalStrength - sidewaysReduction);
     }
     
     // ★ 记录信号生成
@@ -1095,6 +1088,7 @@ function clearSignalCache(interval) {
 
 // 暴露全局函数
 window.detectSignal = detectSignal;
+window.detectSignal5D = detectSignal;
 window.clearSignalCache = clearSignalCache;
 
-console.log('[Detector] 信号检测模块已加载');
+console.log('[Detector] 5维度100分制打分系统已加载');

@@ -372,11 +372,27 @@ public class SignalMonitorService extends Service {
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
-        String emoji = direction.equals("做多") ? "🟢" : "🔴";
-        String content = emoji + " " + direction + "信号 | " + score + "分\n" + reason;
+        // 根据分数确定信号级别 — 强信号突出，观察👁温和
+        boolean isStrongSignal = Math.abs(score) >= 85;
+        String signalLevelText;
+        String levelIcon;  // 级别图标：强信号=闪电，观察=眼睛
+        String emoji;      // 方向emoji：做多绿/做空红
+        if (direction.equals("做多")) {
+            emoji = isStrongSignal ? "🟢" : "🔵";
+            signalLevelText = isStrongSignal ? "做多信号" : "偏多观察";
+        } else {
+            emoji = isStrongSignal ? "🔴" : "🟠";
+            signalLevelText = isStrongSignal ? "做空信号" : "偏空观察";
+        }
+        levelIcon = isStrongSignal ? "🔥🔥" : "👁";
+
+        // 标题：强信号用闪电+大字，观察用眼睛+小字
+        String title = levelIcon + " " + signalLevelText;
+        // 内容：emoji + 分数 + 原因
+        String content = emoji + " " + score + "分  " + signalLevelText + "\n" + reason;
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("🚨 BTC信号: " + direction + "!")
+            .setContentTitle(title)
             .setContentText(content)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(content))
             .setSmallIcon(android.R.drawable.ic_dialog_alert)

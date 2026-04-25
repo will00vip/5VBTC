@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0a0e17">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>BTC自动交易系统</title>
+<title>雷达交易系统</title>
 <link rel="stylesheet" href="style.css">
 <!-- Canvas K线图（完全自绘，无外部依赖） -->
 <script src="canvas-chart.js"></script>
@@ -53,10 +53,11 @@
         <div class="logo-badge">V1</div>
       </div>
       <div class="top-title">
-        <div class="title-main">BTC自动交易</div>
+        <div class="title-main" id="titleMain">雷达</div>
         <div class="title-sub">AI量化·自动交易系统</div>
       </div>
       <div class="top-actions">
+        <button class="action-btn" id="symbolBtn" onclick="showSymbolPanel()">₿</button>
         <button class="action-btn" id="settingsBtn">⚙️</button>
         <button class="action-btn" id="logsBtn" onclick="showLogsPanel()">📋</button>
         <button class="action-btn" id="versionBtn" onclick="showVersionPanel()">📚</button>
@@ -250,7 +251,7 @@
     <div class="signal-header">
       <div class="signal-direction">
         <span class="direction-icon" id="directionIcon">🟢</span>
-        <span class="direction-text" id="directionText">做多信号</span>
+        <span class="direction-text" id="directionText">无信号</span>
       </div>
       <div class="signal-strength">
         <span class="strength-stars" id="starRating">⭐⭐⭐⭐☆</span>
@@ -815,6 +816,7 @@
 
 </div><!-- /container 信号页结束 -->
 
+<script src="detector.js"></script>
 <script src="app.js"></script>
 <script src="ui.js"></script>
 <script src="push-ui.js"></script>
@@ -887,49 +889,101 @@ document.getElementById('frogCharacter').addEventListener('click', () => {
 });
 
 // 更新评分圆盘
-function updateScoreDial(score) {
+function updateScoreDial(score, hasSignal, trend, result) {
   const circle = document.getElementById('scoreCircle');
   const scoreText = document.getElementById('dialScore');
   const starsText = document.getElementById('dialStars');
-  
+  const directionIcon = document.getElementById('directionIcon');
+  const directionText = document.getElementById('directionText');
+
+  // ── 屏幕诊断：让用户直接看到分数计算过程 ──
+  const absScore = Math.abs(score);
+  const isLong = score > 0;
+  const signalType = result && result.type;
+  let decision = '无效';
+  let expectedText = '无信号';
+  if (hasSignal && signalType) {
+    if (absScore >= 85) {
+      expectedText = isLong ? '做多信号' : '做空信号';
+      decision = '>=85分 → ' + expectedText;
+    } else if (absScore >= 60) {
+      expectedText = isLong ? '偏多观察' : '偏空观察';
+      decision = '60-84分 → ' + expectedText;
+    } else {
+      decision = '<60分 → 无信号';
+    }
+  }
+  // 写入诊断条
+  let debugEl = document.getElementById('scoreDebugBar');
+  if (!debugEl) {
+    debugEl = document.createElement('div');
+    debugEl.id = 'scoreDebugBar';
+    debugEl.style.cssText = 'position:fixed;top:5px;left:5px;background:rgba(0,0,0,0.9);color:#0f0;font-size:10px;padding:4px 8px;z-index:9999;border-radius:4px;font-family:monospace;max-width:90vw;overflow:hidden;text-align:left;';
+    document.body.appendChild(debugEl);
+  }
+  debugEl.innerHTML = '<b>📊诊断:</b> 原始分=' + score + ' | |分|=' + absScore + ' | |signalType=' + signalType + '<br>判断: ' + decision;
+
+  if (hasSignal && signalType) {
+    if (absScore >= 85) {
+      // 85-100：强烈信号
+      if (directionIcon) directionIcon.textContent = isLong ? '🟢' : '🔴';
+      if (directionText) directionText.textContent = isLong ? '做多信号' : '做空信号';
+      console.log('[ScoreDial] 显示: 做多信号, score=' + absScore);
+    } else if (absScore >= 60) {
+      // 60-84：偏多观察
+      if (directionIcon) directionIcon.textContent = isLong ? '🟢' : '🔴';
+      if (directionText) directionText.textContent = isLong ? '偏多观察' : '偏空观察';
+      console.log('[ScoreDial] 显示: 偏多观察, score=' + absScore);
+    } else {
+      // 60以下：无信号
+      if (directionIcon) directionIcon.textContent = '⚪';
+      if (directionText) directionText.textContent = '无信号';
+    }
+  } else {
+    if (directionIcon) directionIcon.textContent = '⚪';
+    if (directionText) directionText.textContent = '无信号';
+  }
+
   // 计算进度圆环
   const circumference = 2 * Math.PI * 90;
-  const offset = circumference - (score / 100) * circumference;
+  const offset = circumference - (absScore / 100) * circumference;
   circle.style.strokeDashoffset = offset;
-  
+
   // 根据分数改变颜色
-  if (score >= 80) {
+  if (absScore >= 80) {
     circle.style.stroke = '#4ade80';
-  } else if (score >= 60) {
+  } else if (absScore >= 60) {
     circle.style.stroke = '#fbbf24';
-  } else if (score >= 40) {
+  } else if (absScore >= 40) {
     circle.style.stroke = '#fb923c';
   } else {
     circle.style.stroke = '#f87171';
   }
-  
+
   // 动画显示分数
   let currentScore = 0;
   const animate = () => {
-    if (currentScore < score) {
+    if (currentScore < absScore) {
       currentScore += 2;
-      if (currentScore > score) currentScore = score;
+      if (currentScore > absScore) currentScore = absScore;
       scoreText.textContent = currentScore;
       requestAnimationFrame(animate);
     }
   };
   animate();
-  
+
   // 星级显示
-  const stars = '⭐'.repeat(Math.floor(score / 20)) + '☆'.repeat(5 - Math.floor(score / 20));
+  const stars = '⭐'.repeat(Math.floor(absScore / 20)) + '☆'.repeat(5 - Math.floor(absScore / 20));
   starsText.textContent = stars;
-  
+
   // 更新青蛙表情和语音
-  frog.updateExpression(score);
-  if (score >= 80) frog.speak('high');
-  else if (score >= 50) frog.speak('medium');
-  else frog.speak('low');
-  
+  if (typeof frog !== 'undefined' && frog.updateExpression) {
+    frog.updateExpression(absScore);
+    if (absScore >= 80) frog.speak('high');
+    else if (absScore >= 50) frog.speak('medium');
+    else frog.speak('low');
+  }
+
   // 存储更新函数供外部调用
   window.updateScoreDial = updateScoreDial;
 }
@@ -941,7 +995,7 @@ function updateScoreDial(score) {
     <!-- 头部 -->
     <div style="text-align:center;padding:30px 0;">
       <div style="font-size:48px;margin-bottom:10px;">₿</div>
-      <h1 style="font-size:22px;color:#f8fafc;margin:0 0 5px;">BTC三步法专业交易系统</h1>
+      <h1 style="font-size:22px;color:#f8fafc;margin:0 0 5px;">5维度专业交易系统</h1>
       <div style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#8b5cf6);padding:4px 16px;border-radius:20px;font-size:12px;color:#fff;margin:10px 0;">
         V1.0 正式版
       </div>
@@ -955,12 +1009,12 @@ function updateScoreDial(score) {
       </h2>
       
       <div style="margin-bottom:15px;">
-        <h3 style="font-size:14px;color:#3b82f6;margin:0 0 8px;">🎯 三步法综合评分系统</h3>
+        <h3 style="font-size:14px;color:#3b82f6;margin:0 0 8px;">🎯 5维度100分制打分系统</h3>
         <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.6;">
           智能综合评分：<strong>-100到100分</strong><br>
-          • <strong style="color:#10b981;">≥60分</strong>：做多信号<br>
-          • <strong style="color:#fbbf24;">-60到60分</strong>：观望<br>
-          • <strong style="color:#ef4444;">≤-60分</strong>：做空信号
+          • <strong style="color:#10b981;">≥85分</strong>：做多/做空信号<br>
+          • <strong style="color:#fbbf24;">60-84分</strong>：偏多/偏空观察<br>
+          • <strong style="color:#ef4444;">&lt;60分</strong>：观望
         </p>
       </div>
 
@@ -1005,19 +1059,21 @@ function updateScoreDial(score) {
       </h2>
       
       <div style="margin-bottom:15px;">
-        <h3 style="font-size:14px;color:#3b82f6;margin:0 0 8px;">📊 综合评分规则</h3>
+        <h3 style="font-size:14px;color:#3b82f6;margin:0 0 8px;">📊 5维度打分规则</h3>
         <p style="font-size:12px;color:#94a3b8;margin:0 0 10px;line-height:1.6;">
-          系统基于多指标综合评分：<br><br>
-          • <strong style="color:#10b981;">≥60分</strong>：做多信号<br>
-          • <strong style="color:#fbbf24;">-60到60分</strong>：观望<br>
-          • <strong style="color:#ef4444;">≤-60分</strong>：做空信号<br><br>
+          系统基于5维度综合评分：<br><br>
+          • <strong style="color:#10b981;">基础条件</strong>：0-17分（插针5.7 + 低点抬高5.7 + MACD配合5.7）<br>
+          • <strong style="color:#10b981;">多周期共振</strong>：0-43分（趋势15 + RSI极值9 + MACD方向12 + 成交量7）<br>
+          • <strong style="color:#10b981;">趋势强度</strong>：0-17分（强势17 / 一般11 / 中性3）<br>
+          • <strong style="color:#10b981;">波动率</strong>：0-17分（理想2-4% → 17 / 良好1-5% → 11 / 一般0.5-8% → 6）<br>
+          • <strong style="color:#10b981;">成交量</strong>：0-6分（1.5倍→6 / 1.2倍→4 / 轻微→2）<br><br>
           评分范围：<strong>-100到100分</strong>
         </p>
       </div>
 
       <div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:12px;">
         <p style="font-size:12px;color:#fbbf24;margin:0;line-height:1.6;">
-          💡 <strong>核心策略</strong>：60分以上才可做多，-60分以下才可做空，严格控制风险
+          💡 <strong>核心策略</strong>：85分以上才触发信号，60-84分显示偏多/偏空观察，严格控制风险
         </p>
       </div>
     </div>
@@ -1142,6 +1198,96 @@ function showVersionPanel() {
   document.getElementById('versionPanel').style.display = 'block'
   document.body.style.overflow = 'hidden'
   updateVersionInfo()
+}
+
+function hideVersionPanel() {
+  document.getElementById('versionPanel').style.display = 'none'
+  document.body.style.overflow = ''
+}
+
+// ─────────────────────────────────────────
+// 交易对切换面板
+// ─────────────────────────────────────────
+function showSymbolPanel() {
+  // 如果面板已存在则关闭
+  const existing = document.getElementById('symbolPanelOverlay');
+  if (existing) { existing.remove(); return; }
+
+  const current = window.getSymbol ? window.getSymbol() : 'BTCUSDT';
+
+  // 创建遮罩层
+  const overlay = document.createElement('div');
+  overlay.id = 'symbolPanelOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:99998;display:flex;align-items:center;justify-content:center;';
+
+  overlay.innerHTML = `
+    <div style="background:#1e1e2e;border-radius:16px;padding:24px;min-width:280px;box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:24px;margin-bottom:4px;">📊</div>
+        <div style="color:#f8fafc;font-size:16px;font-weight:bold;">选择交易对</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <button class="sym-btn ${current==='BTCUSDT'?'active':''}" data-sym="BTCUSDT" onclick="_doSwitch('BTCUSDT')">
+          <span style="font-size:20px;">₿</span>
+          <span style="flex:1;text-align:left;">BTC/USDT</span>
+          <span class="sym-check" style="${current==='BTCUSDT'?'opacity:1':'opacity:0'}">✓</span>
+        </button>
+        <button class="sym-btn ${current==='ETHUSDT'?'active':''}" data-sym="ETHUSDT" onclick="_doSwitch('ETHUSDT')">
+          <span style="font-size:20px;">Ξ</span>
+          <span style="flex:1;text-align:left;">ETH/USDT</span>
+          <span class="sym-check" style="${current==='ETHUSDT'?'opacity:1':'opacity:0'}">✓</span>
+        </button>
+      </div>
+      <button onclick="this.closest('#symbolPanelOverlay').remove()" style="margin-top:16px;width:100%;padding:10px;background:rgba(255,255,255,0.08);border:none;border-radius:8px;color:#94a3b8;cursor:pointer;font-size:14px;">取消</button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+function _doSwitch(symbol) {
+  const overlay = document.getElementById('symbolPanelOverlay');
+  if (overlay) overlay.remove();
+  switchSymbol(symbol);
+}
+
+// 交易对切换函数
+function switchSymbol(symbol) {
+  if (!symbol || !['BTCUSDT', 'ETHUSDT'].includes(symbol)) return;
+  if (window.setSymbol) window.setSymbol(symbol);
+  const btn = document.getElementById('symbolBtn');
+  if (btn) btn.textContent = symbol === 'BTCUSDT' ? '₿' : 'Ξ';
+  const titleMain = document.getElementById('titleMain');
+  if (titleMain) titleMain.textContent = symbol === 'BTCUSDT' ? 'BTC雷达' : 'ETH雷达';
+  // 重新获取数据
+  if (window.fetchKlines) {
+    window.fetchKlines('15m', 200).then(() => {
+      if (window.detectSignal) window.detectSignal();
+    });
+  }
+}
+
+// 交易对切换函数
+function switchSymbol(symbol) {
+  if (window.setSymbol && window.setSymbol(symbol)) {
+    const btn = document.getElementById('symbolBtn');
+    if (btn) {
+      btn.textContent = symbol === 'BTCUSDT' ? '₿' : 'Ξ';
+    }
+    // 更新标题
+    const titleMain = document.getElementById('titleMain');
+    if (titleMain) {
+      const baseName = symbol === 'BTCUSDT' ? 'BTC' : 'ETH';
+      titleMain.textContent = baseName + '雷达';
+    }
+    // 重新获取数据
+    if (window.fetchKlines) {
+      window.fetchKlines('15m', 200).then(() => {
+        if (window.detectSignal) window.detectSignal();
+      });
+    }
+  }
 }
 
 function hideVersionPanel() {
@@ -1327,6 +1473,15 @@ document.addEventListener('DOMContentLoaded', function() {
       features: '基础版本：100分制评分系统'
     })
   }
+  
+  // 键盘快捷键：1=BTC, 2=ETH
+  document.addEventListener('keydown', function(e) {
+    if (e.key === '1') {
+      switchSymbol('BTCUSDT');
+    } else if (e.key === '2') {
+      switchSymbol('ETHUSDT');
+    }
+  });
 })
 </script>
 </body>
