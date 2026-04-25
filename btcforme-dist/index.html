@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="theme-color" content="#0a0e17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>BTC自动交易系统</title>
+<link rel="stylesheet" href="style.css">
+<!-- Canvas K线图（完全自绘，无外部依赖） -->
+<script src="canvas-chart.js"></script>
+<!-- 模拟交易引擎 -->
+<script src="sim-trader.js"></script>
+</head>
+<body>
+
+<!-- 加载状态（隐藏，供ui.js使用） -->
+<div id="loadingSection" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99;background:rgba(59,130,246,0.12);padding:6px;text-align:center;font-size:12px;color:#60a5fa;">⏳ 数据加载中...</div>
+<!-- 错误提示（隐藏，供ui.js使用） -->
+<div id="errorSection" style="display:none;position:fixed;top:40px;left:16px;right:16px;z-index:99;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:10px 14px;">
+  <span id="errorText" style="font-size:13px;color:#f87171;">⚠️ 数据获取失败，请检查网络</span>
+</div>
+
+<!-- 免责声明弹窗 -->
+<div id="disclaimerModal">
+  <div class="disclaimer-box">
+    <div class="disclaimer-title">⚠️ 专业交易系统风险提示</div>
+    <div class="disclaimer-content">
+      本系统为专业量化分析工具,提供多周期共振交易信号分析。<br><br>
+      <strong>不构成任何投资建议,数字货币交易风险极高</strong>,可能导致本金全部损失。<br><br>
+      所有交易决策需用户自行判断,盈亏自负。<br><br>
+      继续使用即表示您已充分理解并接受上述风险。
+    </div>
+    <button class="disclaimer-agree" id="agreeBtn">我已了解风险,进入系统</button>
+  </div>
+</div>
+
+<!-- ★ App内信号弹窗 -->
+<!-- 信号弹窗已完全移除 - App内弹窗禁用，改用原生推送(PushDeer) -->
+
+<!-- 主容器 -->
+<div class="container">
+
+  <!-- 原有主界面 -->
+  <div class="main-content" id="mainContent">
+
+  <!-- 顶部栏 -->
+  <header class="top-header">
+    <div class="top-header-inner">
+      <div class="top-logo">
+        <span class="logo-icon">₿</span>
+        <div class="logo-badge">V1</div>
+      </div>
+      <div class="top-title">
+        <div class="title-main">BTC自动交易</div>
+        <div class="title-sub">AI量化·自动交易系统</div>
+      </div>
+      <div class="top-actions">
+        <button class="action-btn" id="settingsBtn">⚙️</button>
+        <button class="action-btn" id="logsBtn" onclick="showLogsPanel()">📋</button>
+        <button class="action-btn" id="versionBtn" onclick="showVersionPanel()">📚</button>
+        <button class="action-btn" id="refreshBtn">🔄</button>
+      </div>
+    </div>
+    
+    <!-- 周期切换 -->
+    <div class="period-tabs">
+      <button class="period-tab active" data-interval="5m">5m</button>
+      <button class="period-tab" data-interval="15m">15m</button>
+      <button class="period-tab" data-interval="30m">30m</button>
+      <button class="period-tab" data-interval="1h">1h</button>
+      <button class="period-tab" data-interval="4h">4h</button>
+      <button class="period-tab" data-interval="1d">1d</button>
+      <button class="period-tab period-tab-more" id="morePeriodsBtn">更多▾</button>
+    </div>
+    <!-- 更多周期展开 -->
+    <div class="period-tabs period-tabs-more" id="morePeriodsPanel" style="display:none;">
+      <button class="period-tab" data-interval="1m">1m</button>
+      <button class="period-tab" data-interval="3m">3m</button>
+      <button class="period-tab" data-interval="2h">2h</button>
+      <button class="period-tab" data-interval="6h">6h</button>
+      <button class="period-tab" data-interval="12h">12h</button>
+      <button class="period-tab" data-interval="3d">3d</button>
+      <button class="period-tab" data-interval="1w">1w</button>
+    </div>
+  </header>
+
+  <!-- ★ 猫咪评分圆盘（移到最上面）★ -->
+  <section class="score-main-section">
+    <!-- 中间：表情和状态文字 -->
+    <div class="score-center">
+      <!-- 表情 -->
+      <div class="bubble-character" id="bubbleCharacter">
+        <div class="bubble-body">
+          <div class="bubble-face">
+            <div class="bubble-eyes">
+              <div class="b-eye"></div>
+              <div class="b-eye"></div>
+            </div>
+            <div class="bubble-cheeks">
+              <div class="b-cheek"></div>
+              <div class="b-cheek"></div>
+            </div>
+          </div>
+          <!-- 泡泡装饰 -->
+          <div class="bubble-bubbles">
+            <div class="bb b1"></div>
+            <div class="bb b2"></div>
+            <div class="bb b3"></div>
+          </div>
+        </div>
+        <!-- 状态文字 -->
+        <div class="status-content">
+          <div class="bubble-title" id="bubbleTitle">🫧 等待信号...</div>
+          <div class="bubble-text" id="bubbleText">行情整理中，耐心等待机会</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 价格信息（移到第二） -->
+  <section class="price-section">
+    <div class="price-main">
+      <span class="price-value" id="curPrice">--</span>
+      <span class="price-change" id="priceChange">--</span>
+      <span class="ws-status-tag ws-off" id="wsStatus">⚫ 离线</span>
+    </div>
+    <div class="price-meta">
+      <div class="meta-item">
+        <span class="meta-label">24H</span>
+        <span class="meta-value" id="price24hChange">--</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">VOL</span>
+        <span class="meta-value" id="volume24h">--</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">更新</span>
+        <span class="meta-value" id="updateTime">--</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- K线图 -->
+  <section class="integrated-chart-section">
+    <div class="chart-legend">
+      <span class="legend-title">K线 · <span id="chartIntervalLabel">15M</span></span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-dot k-up"></span>涨</span>
+        <span class="legend-item"><span class="legend-dot k-down"></span>跌</span>
+        <button class="chart-toggle-btn" id="toggleBollBtn" onclick="toggleBollMacd('boll')" style="background:rgba(251,191,36,0.15);color:#fbbf24;border:1px solid rgba(251,191,36,0.4);border-radius:6px;padding:2px 6px;font-size:11px;cursor:pointer;margin-left:4px;">BOLL</button>
+        <button class="chart-toggle-btn" id="toggleMacdBtn" onclick="toggleBollMacd('macd')" style="background:rgba(99,179,237,0.15);color:#63b3ed;border:1px solid rgba(99,179,237,0.4);border-radius:6px;padding:2px 6px;font-size:11px;cursor:pointer;margin-left:2px;">MACD</button>
+        <span class="chart-source-tag" id="dataSourceTag">BinanceVision</span>
+      </div>
+    </div>
+    <!-- Canvas K线挂载点 -->
+    <div id="lwChartContainer" style="width:100%;height:380px;"></div>
+  </section>
+
+  <!-- ★ 算法说明 - 真实反映插针检测算法 ★ -->
+  <section class="algorithm-section-new">
+    <div class="algo-header">
+      <span class="algo-icon">📊</span>
+      <span class="algo-title">插针检测评分规则</span>
+      <span class="algo-badge">顺势交易</span>
+    </div>
+    
+    <!-- 评分计算方式 -->
+    <div class="algo-scoring">
+      <div class="scoring-title">📐 评分计算（基础分40分）</div>
+      <div class="scoring-items">
+        <div class="scoring-item">
+          <span class="scoring-dot" style="background:#3b82f6;"></span>
+          <span class="scoring-name">插针形态</span>
+          <span class="scoring-score">+40</span>
+        </div>
+        <div class="scoring-item">
+          <span class="scoring-dot" style="background:#10b981;"></span>
+          <span class="scoring-name">确认K线</span>
+          <span class="scoring-score">+25</span>
+        </div>
+        <div class="scoring-item">
+          <span class="scoring-dot" style="background:#8b5cf6;"></span>
+          <span class="scoring-name">技术指标</span>
+          <span class="scoring-score">+20</span>
+        </div>
+        <div class="scoring-item">
+          <span class="scoring-dot" style="background:#f59e0b;"></span>
+          <span class="scoring-name">关键位置</span>
+          <span class="scoring-score">+15</span>
+        </div>
+        <div class="scoring-item">
+          <span class="scoring-dot" style="background:#ec4899;"></span>
+          <span class="scoring-name">顺势做单</span>
+          <span class="scoring-score green">+10</span>
+        </div>
+        <div class="scoring-item">
+          <span class="scoring-dot" style="background:#ef4444;"></span>
+          <span class="scoring-name">逆势做单</span>
+          <span class="scoring-score red">-15</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 信号阈值 -->
+    <div class="algo-rules">
+      <div class="algo-rule rule-long">
+        <span class="rule-icon">🟢</span>
+        <span class="rule-range">≥+60</span>
+        <span class="rule-action">做多信号</span>
+      </div>
+      <div class="algo-rule rule-neutral">
+        <span class="rule-icon">🟡</span>
+        <span class="rule-range">-60~+60</span>
+        <span class="rule-action">观望等待</span>
+      </div>
+      <div class="algo-rule rule-short">
+        <span class="rule-icon">🔴</span>
+        <span class="rule-range">≤-60</span>
+        <span class="rule-action">做空信号</span>
+      </div>
+    </div>
+    
+    <div class="algo-tip">💡 信号质量：60-69基础 | 70-84优质 | 85+强烈 | 严格风控，顺势而为</div>
+  </section>
+
+  <!-- 趋势状态 -->
+  <section class="trend-section">
+    <div class="trend-header">
+      <span class="trend-icon" id="trendIcon">↔️</span>
+      <span class="trend-label" id="trendLabel">分析中</span>
+      <div class="trend-ma">
+        <span class="ma-label">MA20:</span>
+        <span class="ma-value" id="ma20">--</span>
+        <span class="ma-label">MA60:</span>
+        <span class="ma-value" id="ma60">--</span>
+      </div>
+    </div>
+    <div class="trend-position">
+      <span class="position-label">价格相对MA20:</span>
+      <span class="position-value" id="maPosition">--</span>
+    </div>
+  </section>
+
+  <!-- 信号卡片 -->
+  <section class="signal-card" id="signalCard" style="display: none;">
+    
+    <!-- 信号头部 -->
+    <div class="signal-header">
+      <div class="signal-direction">
+        <span class="direction-icon" id="directionIcon">🟢</span>
+        <span class="direction-text" id="directionText">做多信号</span>
+      </div>
+      <div class="signal-strength">
+        <span class="strength-stars" id="starRating">⭐⭐⭐⭐☆</span>
+        <span class="strength-label" id="signalDesc">强信号·双周期共振</span>
+      </div>
+    </div>
+    
+    <!-- 信号倒计时 -->
+    <div class="signal-countdown" id="signalCountdown" style="display:none;">
+      <span class="countdown-icon">⏰</span>
+      <span class="countdown-text" id="countdownText">信号有效期：120秒</span>
+      <div class="countdown-bar">
+        <div class="countdown-progress" id="countdownProgress"></div>
+      </div>
+    </div>
+
+    <!-- ★ 信号质量标注 + 趋势警告 -->
+    <div id="signalQualityTag" style="display:none;font-size:13px;font-weight:bold;padding:6px 12px;margin:4px 0;border-radius:8px;background:rgba(255,255,255,0.07);text-align:center;"></div>
+    <div id="trendWarningTag" style="display:none;font-size:12px;padding:4px 12px;margin:2px 0;border-radius:6px;background:rgba(255,0,0,0.1);text-align:center;"></div>
+    <!-- ★ 历史回测统计 -->
+    <div id="backtestSummary" style="display:none;font-size:11px;color:#6b7280;padding:4px 12px;margin:2px 0;text-align:center;border-top:1px solid rgba(255,255,255,0.06);"></div>
+    
+    <!-- 多周期共振 -->
+    <div class="resonance-section">
+      <div class="section-title">📊 多周期共振分析</div>
+      <div class="resonance-grid">
+        <div class="resonance-item" id="resonanceTrend">
+          <span class="resonance-icon">🎯</span>
+          <span class="resonance-label">趋势共振</span>
+        </div>
+        <div class="resonance-item" id="resonanceRSI">
+          <span class="resonance-icon">📊</span>
+          <span class="resonance-label">RSI共振</span>
+        </div>
+        <div class="resonance-item" id="resonanceMACD">
+          <span class="resonance-icon">📈</span>
+          <span class="resonance-label">MACD共振</span>
+        </div>
+        <div class="resonance-item" id="resonanceVolume">
+          <span class="resonance-icon">📢</span>
+          <span class="resonance-label">放量确认</span>
+        </div>
+      </div>
+      <div class="resonance-meta">
+        <div class="meta-item">
+          <span class="meta-label">当前RSI:</span>
+          <span class="meta-value" id="currentRSI">--</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">高周期RSI:</span>
+          <span class="meta-value" id="higherRSI">--</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">成交量:</span>
+          <span class="meta-value" id="volumeRatio">--</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 条件验证 -->
+    <div class="conditions-section">
+      <div class="section-header">
+        <span class="section-title">✅ 条件验证</span>
+        <span class="conditions-progress" id="conditionsProgress">0/3</span>
+      </div>
+      <div class="conditions-list" id="conditionsList">
+        <!-- 动态生成 -->
+      </div>
+    </div>
+    
+    <!-- 交易计划 -->
+    <div class="trade-plan">
+      <div class="section-title">🎯 交易计划</div>
+      <div class="plan-grid">
+        <div class="plan-item">
+          <span class="plan-label">入场区间</span>
+          <span class="plan-value" id="entryZone">-- - --</span>
+        </div>
+        <div class="plan-item">
+          <span class="plan-label">止损位</span>
+          <span class="plan-value stop-loss" id="stopLoss">--</span>
+        </div>
+        <div class="plan-item">
+          <span class="plan-label">波动率(ATR)</span>
+          <span class="plan-value" id="atrPercent">--</span>
+        </div>
+      </div>
+      <div class="take-profits">
+        <span class="tp-label">止盈目标:</span>
+        <div class="tp-list">
+          <div class="tp-item">
+            <span class="tp-level">TP1</span>
+            <span class="tp-value" id="tp1">--</span>
+          </div>
+          <div class="tp-item">
+            <span class="tp-level">TP2</span>
+            <span class="tp-value" id="tp2">--</span>
+          </div>
+          <div class="tp-item">
+            <span class="tp-level">TP3</span>
+            <span class="tp-value" id="tp3">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 仓位建议 -->
+    <div class="position-section">
+      <div class="section-header">
+        <span class="section-title">💰 仓位建议</span>
+        <span class="position-rating" id="positionRating">⭐⭐⭐⭐☆</span>
+      </div>
+      <div class="position-details">
+        <div class="position-item">
+          <span class="pos-label">仓位比例</span>
+          <span class="pos-value" id="positionRatio">--%</span>
+        </div>
+        <div class="position-item">
+          <span class="pos-label">建议张数</span>
+          <span class="pos-value" id="suggestedContracts">--</span>
+        </div>
+        <div class="position-item">
+          <span class="pos-label">风险金额</span>
+          <span class="pos-value" id="riskPerTrade">-- U</span>
+        </div>
+        <div class="position-item">
+          <span class="pos-label">止损距离</span>
+          <span class="pos-value" id="stopDistance">--</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 冬眠小熊等待区 -->
+  <section class="hibernate-card" id="noSignalCard">
+    <div class="hibernate-content">
+      <!-- 猫咪表情图标 + 分数指示器 -->
+      <div class="cat-mood-container" id="catMoodContainer">
+        <div class="cat-mood sleeping" id="catMoodIcon">😴</div>
+      </div>
+      
+      <!-- AI状态标题 -->
+      <span class="hibernate-title" id="catMoodTitle">😴 打盹中</span>
+      
+      <!-- 综合评分指示器 -->
+      <div class="score-indicator">
+        <span class="score-label">综合评分</span>
+        <span class="score-value" id="aiScoreValue">--</span>
+        <span class="score-label">分</span>
+      </div>
+      
+      <!-- AI状态描述 -->
+      <span class="hibernate-desc" id="catMoodDesc">市场正在休息，没有符合三步法的信号</span>
+
+      <!-- 重要信息监控 -->
+      <div class="important-info-section" id="importantInfoSection">
+        <div class="info-row">
+          <span class="info-label">📍 插针检测</span>
+          <span class="info-value" id="pinDetection">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">📊 波动率</span>
+          <span class="info-value" id="volatilityValue">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">⚡ 快速波动</span>
+          <span class="info-value" id="fastMoveAlert">--</span>
+        </div>
+      </div>
+      
+      <div class="hibernate-actions">
+        <button class="bear-btn primary" id="viewAnalysisBtn">🌲 查看详情</button>
+        <button class="bear-btn secondary" id="refreshSignalBtn">🔍 刷新数据</button>
+      </div>
+    </div>
+  </section>
+
+
+
+
+  <!-- ★★★★★ 交易系统V1 ★★★★★ -->
+  <section class="trade-v1-section" id="tradeV1Section">
+    <!-- 标题栏 -->
+    <div class="trade-v1-header">
+      <div class="trade-v1-title">
+        <span class="trade-v1-icon">📊</span>
+        <span>交易系统V1</span>
+        <span id="roundInfo" class="trade-v1-round-info">第1轮</span>
+      </div>
+      <button class="trade-v1-start-btn" id="startTradeBtn" onclick="toggleTradeSession()">
+        <span id="startBtnText">🔄 重置</span>
+      </button>
+    </div>
+    
+    <!-- 设置区域 -->
+    <div class="trade-v1-settings">
+      <div class="setting-group">
+        <div class="setting-item-inline">
+          <label class="setting-label">余额</label>
+          <div class="setting-input-group">
+            <input type="number" id="tradeBalance" value="1000" min="1000" max="1000" step="1" disabled>
+            <span class="input-suffix">U</span>
+          </div>
+        </div>
+        <div class="setting-item-inline">
+          <label class="setting-label">杠杆</label>
+          <div class="setting-input-group">
+            <input type="number" id="tradeLeverage" value="30" min="1" max="100" step="1" onchange="updateLeverage(this.value)">
+            <span class="input-suffix">×</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 账户卡片 -->
+    <div class="trade-v1-account">
+      <div class="trade-v1-balance">
+        <div class="balance-label">当前余额</div>
+        <div class="balance-value">
+          <span class="balance-num" id="simBalance">1000.00</span>
+          <span class="balance-unit">U</span>
+        </div>
+      </div>
+      <div class="trade-v1-pnl">
+        <div class="pnl-label">总盈亏</div>
+        <div class="pnl-value" id="simPnL">+0.00U</div>
+        <div class="pnl-percent" id="simPnLPercent">0.00%</div>
+      </div>
+    </div>
+    
+    <!-- 统计卡片网格 -->
+    <div class="trade-v1-stats">
+      <div class="stat-card">
+        <div class="stat-icon">📊</div>
+        <div class="stat-num" id="totalTrades">0</div>
+        <div class="stat-label">总交易</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🎯</div>
+        <div class="stat-num" id="winRate">--%</div>
+        <div class="stat-label">胜率</div>
+      </div>
+      <div class="stat-card win">
+        <div class="stat-icon">📈</div>
+        <div class="stat-num" id="totalWin">+0U</div>
+        <div class="stat-label">盈利</div>
+      </div>
+      <div class="stat-card loss">
+        <div class="stat-icon">📉</div>
+        <div class="stat-num" id="totalLoss">-0U</div>
+        <div class="stat-label">亏损</div>
+      </div>
+    </div>
+    
+    <!-- 新模块信息 -->
+    <div class="trade-v1-modules">
+      <div class="module-card">
+        <div class="module-title">最大回撤保护</div>
+        <div class="module-content" id="maxDrawdownInfo">
+          <div class="module-item">
+            <span class="module-label">当前回撤:</span>
+            <span class="module-value" id="currentDrawdown">0%</span>
+          </div>
+          <div class="module-item">
+            <span class="module-label">状态:</span>
+            <span class="module-value" id="drawdownStatus">正常</span>
+          </div>
+        </div>
+      </div>
+      <div class="module-card">
+        <div class="module-title">交易执行</div>
+        <div class="module-content" id="tradeExecutionInfo">
+          <div class="module-item">
+            <span class="module-label">随机间隔:</span>
+            <span class="module-value" id="randomInterval">启用</span>
+          </div>
+          <div class="module-item">
+            <span class="module-label">委托拆分:</span>
+            <span class="module-value" id="orderSplit">启用</span>
+          </div>
+        </div>
+      </div>
+      <div class="module-card">
+        <div class="module-title">版本信息</div>
+        <div class="module-content" id="versionInfo">
+          <div class="module-item">
+            <span class="module-label">当前版本:</span>
+            <span class="module-value" id="currentVersion">v1.0.0</span>
+          </div>
+          <div class="module-item">
+            <span class="module-label">交易次数:</span>
+            <span class="module-value" id="tradeCount">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 当前持仓卡片 -->
+    <div class="trade-v1-position" id="positionCard">
+      <div class="position-empty" id="positionEmpty">
+        <span class="empty-icon">📭</span>
+        <span class="empty-text">暂无持仓</span>
+        <span class="empty-hint">等待信号入场...</span>
+      </div>
+      
+      <div class="position-info" id="positionInfo" style="display:none;">
+        <div class="position-header">
+          <div class="position-direction" id="posDirection">做多</div>
+          <div class="position-badge" id="posBadge">持仓中</div>
+        </div>
+        <div class="position-details">
+          <div class="detail-item">
+            <span class="detail-label">入场价</span>
+            <span class="detail-value" id="posEntryPrice">--</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">当前价</span>
+            <span class="detail-value" id="posCurrentPrice">--</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">盈亏</span>
+            <span class="detail-value pnl" id="posPnL">+0.00U</span>
+          </div>
+        </div>
+        <div class="position-levels">
+          <div class="level-tag sl">
+            <span class="level-label">止损</span>
+            <span class="level-value" id="posSL">--</span>
+          </div>
+          <div class="level-tag tp">
+            <span class="level-label">TP1</span>
+            <span class="level-value" id="posTP1">--</span>
+          </div>
+          <div class="level-tag tp">
+            <span class="level-label">TP2</span>
+            <span class="level-value" id="posTP2">--</span>
+          </div>
+        </div>
+        <div class="position-actions">
+          <button class="action-btn close-loss" id="closeSLBtn">
+            <span>止损</span>
+            <span class="btn-icon">🔴</span>
+          </button>
+          <button class="action-btn close-profit" id="closeTP1Btn">
+            <span>TP1</span>
+            <span class="btn-icon">📈</span>
+          </button>
+          <button class="action-btn close-profit" id="closeTP2Btn">
+            <span>TP2</span>
+            <span class="btn-icon">💰</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 信号指示器 -->
+    <div class="trade-v1-signal" id="signalIndicator">
+      <div class="signal-label">当前信号</div>
+      <div class="signal-value" id="currentSignal">
+        <span class="signal-dot waiting"></span>
+        <span class="signal-text">等待信号...</span>
+      </div>
+    </div>
+    
+    <!-- 交易历史和绩效分析 -->
+    <div class="trade-v1-history" id="tradeHistorySection">
+      <div class="history-header">
+        <span class="history-title">📈 交易历史与绩效分析</span>
+        <button class="history-toggle" onclick="toggleHistorySection()">
+          <span id="historyToggleIcon">▼</span>
+        </button>
+      </div>
+      
+      <div class="history-content" id="historyContent" style="display:none;">
+        <!-- 绩效分析图表 -->
+        <div class="performance-charts">
+          <div class="chart-container">
+            <canvas id="equityChart" width="400" height="200"></canvas>
+            <div class="chart-label">资金曲线</div>
+          </div>
+          <div class="chart-container">
+            <canvas id="winRateChart" width="400" height="200"></canvas>
+            <div class="chart-label">胜率趋势</div>
+          </div>
+        </div>
+        
+        <!-- 交易历史列表 -->
+        <div class="trade-history-list" id="tradeHistoryList">
+          <div class="history-list-header">
+            <span class="list-header-id">#</span>
+            <span class="list-header-time">时间</span>
+            <span class="list-header-direction">方向</span>
+            <span class="list-header-entry">入场</span>
+            <span class="list-header-exit">出场</span>
+            <span class="list-header-pnl">盈亏</span>
+          </div>
+          <div class="history-list-content" id="tradeHistoryItems">
+            <!-- 动态生成交易记录 -->
+            <div class="history-empty">
+              <span>暂无交易记录</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 加钱弹窗 -->
+  <div class="add-money-modal" id="addMoneyModal">
+    <div class="add-money-content">
+      <div class="add-money-title">💰 添加资金</div>
+      <input type="number" class="add-money-input" id="addMoneyInput" placeholder="输入金额" min="1" max="10000">
+      <div class="add-money-btns">
+        <button class="add-money-confirm" onclick="confirmAddMoney()">确认添加</button>
+        <button class="add-money-cancel" onclick="closeAddMoneyModal()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 推送管理界面 v1.0 -->
+  <section class="push-management-section" id="pushManagementSection">
+    <div class="section-header" onclick="togglePushSection()">
+      <span class="section-title">📢 推送管理</span>
+      <span class="toggle-icon" id="pushToggleIcon">▼</span>
+    </div>
+    
+    <div class="push-content" id="pushContent">
+      <!-- 统计卡片 -->
+      <div class="push-stats-grid">
+        <div class="stat-card stat-primary">
+          <span class="stat-label">总推送</span>
+          <span class="stat-value" id="totalPushes">0</span>
+        </div>
+        <div class="stat-card stat-success">
+          <span class="stat-label">成功</span>
+          <span class="stat-value" id="successCount">0</span>
+        </div>
+        <div class="stat-card stat-failure">
+          <span class="stat-label">失败</span>
+          <span class="stat-value" id="failureCount">0</span>
+        </div>
+        <div class="stat-card stat-rate">
+          <span class="stat-label">胜率</span>
+          <span class="stat-value" id="successRate">0%</span>
+        </div>
+      </div>
+      
+      <!-- 详细统计 -->
+      <div class="push-details-stats">
+        <div class="detail-row">
+          <span class="detail-label">待处理:</span>
+          <span class="detail-value" id="pendingCount">0</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">最近7天:</span>
+          <span class="detail-value" id="recentRate">0%</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">做多/做空:</span>
+          <span class="detail-value" id="longShortRatio">0 / 0</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">平均评分:</span>
+          <span class="detail-value" id="avgScore">0</span>
+        </div>
+      </div>
+      
+      <!-- 操作按钮 -->
+      <div class="push-actions">
+        <button class="push-action-btn btn-secondary" id="refreshStatsBtn">
+          <span class="btn-icon">🔄</span>
+          <span class="btn-text">刷新</span>
+        </button>
+        <button class="push-action-btn btn-danger" id="clearPushesBtn">
+          <span class="btn-icon">🗑️</span>
+          <span class="btn-text">清空</span>
+        </button>
+      </div>
+      <div class="push-help">
+        💡 信号推送由后台监控自动发送，无需手动操作
+      </div>
+      
+      <!-- 推送记录列表 -->
+      <div class="push-records-container">
+        <div class="records-header">
+          <span class="records-title">历史记录</span>
+          <span class="records-count" id="recordsCount">0 条</span>
+        </div>
+        <div class="push-records-list" id="pushRecordsList">
+          <!-- 动态生成 -->
+          <div class="empty-state">暂无推送记录</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 推送记录详情弹窗 -->
+  <div id="pushDetailModal" class="push-detail-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title" id="modalTitle">推送详情</span>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        <!-- 动态生成 -->
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn btn-mark-success" id="markSuccessBtn">✅ 标记成功</button>
+        <button class="modal-btn btn-mark-failure" id="markFailureBtn">❌ 标记失败</button>
+        <button class="modal-btn btn-cancel" id="cancelModalBtn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 后台监控状态显示（始终开启） -->
+  <section class="monitor-control-section" id="monitorControlSection">
+    <div class="monitor-header" onclick="toggleMonitorPanel()">
+      <span class="monitor-title">📡 后台监控</span>
+      <div class="monitor-status" id="monitorStatus">
+        <span class="status-dot active" id="monitorDot"></span>
+        <span class="status-text" id="monitorStatusText">运行中</span>
+      </div>
+      <span class="toggle-icon" id="monitorToggleIcon">▼</span>
+    </div>
+    <div class="monitor-content" id="monitorContent" style="display:none;">
+      <div class="monitor-info">
+        <p>📱 后台服务正在运行，App退出后仍会自动监控信号，发现机会时推送通知。</p>
+      </div>
+      <div class="monitor-toggle-row">
+        <span class="toggle-label">⏱️ 检测间隔</span>
+        <select id="checkIntervalSelect" class="interval-select" onchange="updateCheckInterval()">
+          <option value="60">1分钟</option>
+          <option value="180" selected>3分钟</option>
+          <option value="300">5分钟</option>
+          <option value="600">10分钟</option>
+        </select>
+      </div>
+      <div class="monitor-toggle-row">
+        <span class="toggle-label">📱 开机自启动</span>
+        <label class="monitor-switch">
+          <input type="checkbox" id="autoStartSwitch" onchange="toggleAutoStart()">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+      <div class="monitor-stats">
+        <div class="stat-item">
+          <span class="stat-label">累计检测</span>
+          <span class="stat-value" id="monitorCount">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">最近检测</span>
+          <span class="stat-value" id="lastCheckTime">--</span>
+        </div>
+      </div>
+      <button class="test-notify-btn" id="testNotifyBtn" onclick="testNotification()">
+        🧪 发送测试通知
+      </button>
+    </div>
+  </section>
+
+
+
+</div><!-- /container 信号页结束 -->
+
+<script src="app.js"></script>
+<script src="ui.js"></script>
+<script src="push-ui.js"></script>
+<script>
+// 青蛙互动效果
+const frog = {
+  speechEl: document.getElementById('frogSpeech'),
+  characterEl: document.getElementById('frogCharacter'),
+  mouthEl: document.getElementById('frogMouth'),
+  
+  speeches: {
+    'high': [
+      '哇！信号好强! 🌟',
+      '机会来了! 准备入场!',
+      'K线看起来很棒! 📈',
+      '多周期共振! 冲鸭!'
+    ],
+    'medium': [
+      '咕咕~ 还可以~',
+      '慢慢来~ 我在看盘~',
+      '市场在整理中...',
+      '再观察一下吧~'
+    ],
+    'low': [
+      '咕呱... 等等信号...',
+      '先别急~ 风险大!',
+      '没有好信号~ 等等...',
+      '咕咕~ 保持耐心!'
+    ],
+    'default': [
+      '咕咕~ 我在看盘!',
+      '今天行情怎么样?',
+      '别忘设置止损哦~',
+      '保持冷静~ 🐸'
+    ]
+  },
+  
+  speak(type = 'default') {
+    const speeches = this.speeches[type];
+    const text = speeches[Math.floor(Math.random() * speeches.length)];
+    this.speechEl.textContent = text;
+    this.speechEl.style.opacity = '1';
+    
+    // 说话动画
+    this.characterEl.classList.add('speaking');
+    setTimeout(() => {
+      this.speechEl.style.opacity = '0';
+      this.characterEl.classList.remove('speaking');
+    }, 2000);
+  },
+  
+  updateExpression(score) {
+    // 根据分数调整表情
+    if (score >= 80) {
+      this.mouthEl.classList.add('happy');
+      this.mouthEl.classList.remove('neutral', 'worried');
+    } else if (score >= 50) {
+      this.mouthEl.classList.add('neutral');
+      this.mouthEl.classList.remove('happy', 'worried');
+    } else {
+      this.mouthEl.classList.add('worried');
+      this.mouthEl.classList.remove('happy', 'neutral');
+    }
+  }
+};
+
+// 青蛙点击互动
+document.getElementById('frogCharacter').addEventListener('click', () => {
+  frog.speak('default');
+});
+
+// 更新评分圆盘
+function updateScoreDial(score) {
+  const circle = document.getElementById('scoreCircle');
+  const scoreText = document.getElementById('dialScore');
+  const starsText = document.getElementById('dialStars');
+  
+  // 计算进度圆环
+  const circumference = 2 * Math.PI * 90;
+  const offset = circumference - (score / 100) * circumference;
+  circle.style.strokeDashoffset = offset;
+  
+  // 根据分数改变颜色
+  if (score >= 80) {
+    circle.style.stroke = '#4ade80';
+  } else if (score >= 60) {
+    circle.style.stroke = '#fbbf24';
+  } else if (score >= 40) {
+    circle.style.stroke = '#fb923c';
+  } else {
+    circle.style.stroke = '#f87171';
+  }
+  
+  // 动画显示分数
+  let currentScore = 0;
+  const animate = () => {
+    if (currentScore < score) {
+      currentScore += 2;
+      if (currentScore > score) currentScore = score;
+      scoreText.textContent = currentScore;
+      requestAnimationFrame(animate);
+    }
+  };
+  animate();
+  
+  // 星级显示
+  const stars = '⭐'.repeat(Math.floor(score / 20)) + '☆'.repeat(5 - Math.floor(score / 20));
+  starsText.textContent = stars;
+  
+  // 更新青蛙表情和语音
+  frog.updateExpression(score);
+  if (score >= 80) frog.speak('high');
+  else if (score >= 50) frog.speak('medium');
+  else frog.speak('low');
+  
+  // 存储更新函数供外部调用
+  window.updateScoreDial = updateScoreDial;
+}
+</script>
+
+<!-- 关于面板 -->
+<div id="aboutPanel" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:9999;overflow-y:auto;">
+  <div style="max-width:600px;margin:0 auto;padding:20px;">
+    <!-- 头部 -->
+    <div style="text-align:center;padding:30px 0;">
+      <div style="font-size:48px;margin-bottom:10px;">₿</div>
+      <h1 style="font-size:22px;color:#f8fafc;margin:0 0 5px;">BTC三步法专业交易系统</h1>
+      <div style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#8b5cf6);padding:4px 16px;border-radius:20px;font-size:12px;color:#fff;margin:10px 0;">
+        V1.0 正式版
+      </div>
+      <p style="color:#64748b;font-size:13px;margin:5px 0;">7×24小时智能监控 | WebSocket实时推送</p>
+    </div>
+
+    <!-- 功能介绍 -->
+    <div style="background:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;">
+      <h2 style="font-size:16px;color:#f8fafc;margin:0 0 15px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:10px;">
+        📋 功能介绍
+      </h2>
+      
+      <div style="margin-bottom:15px;">
+        <h3 style="font-size:14px;color:#3b82f6;margin:0 0 8px;">🎯 三步法综合评分系统</h3>
+        <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.6;">
+          智能综合评分：<strong>-100到100分</strong><br>
+          • <strong style="color:#10b981;">≥60分</strong>：做多信号<br>
+          • <strong style="color:#fbbf24;">-60到60分</strong>：观望<br>
+          • <strong style="color:#ef4444;">≤-60分</strong>：做空信号
+        </p>
+      </div>
+
+      <div style="margin-bottom:15px;">
+        <h3 style="font-size:14px;color:#10b981;margin:0 0 8px;">⚡ WebSocket实时推送</h3>
+        <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.6;">
+          毫秒级价格更新，不占用API配额<br>
+          价格每秒实时刷新，K线变化即时感知
+        </p>
+      </div>
+
+      <div style="margin-bottom:15px;">
+        <h3 style="font-size:14px;color:#f59e0b;margin:0 0 8px;">🔔 24小时后台监控</h3>
+        <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.6;">
+          可选检测间隔：1/3/5/10分钟<br>
+          开机自启动，发现信号即时推送通知
+        </p>
+      </div>
+
+      <div style="margin-bottom:15px;">
+        <h3 style="font-size:14px;color:#ec4899;margin:0 0 8px;">📊 重要信息监控</h3>
+        <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.6;">
+          • 📍 插针检测：识别锤子/射击星形态<br>
+          • 📊 波动率：ATR平均真实波幅<br>
+          • ⚡ 快速波动：监测异常涨跌
+        </p>
+      </div>
+
+      <div>
+        <h3 style="font-size:14px;color:#06b6d4;margin:0 0 8px;">🔐 数据源</h3>
+        <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.6;">
+          火币API → Binance API → 模拟数据兜底<br>
+          三重保障，永不掉线
+        </p>
+      </div>
+    </div>
+
+    <!-- 算法说明 -->
+    <div style="background:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;">
+      <h2 style="font-size:16px;color:#f8fafc;margin:0 0 15px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:10px;">
+        🧮 算法说明
+      </h2>
+      
+      <div style="margin-bottom:15px;">
+        <h3 style="font-size:14px;color:#3b82f6;margin:0 0 8px;">📊 综合评分规则</h3>
+        <p style="font-size:12px;color:#94a3b8;margin:0 0 10px;line-height:1.6;">
+          系统基于多指标综合评分：<br><br>
+          • <strong style="color:#10b981;">≥60分</strong>：做多信号<br>
+          • <strong style="color:#fbbf24;">-60到60分</strong>：观望<br>
+          • <strong style="color:#ef4444;">≤-60分</strong>：做空信号<br><br>
+          评分范围：<strong>-100到100分</strong>
+        </p>
+      </div>
+
+      <div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:12px;">
+        <p style="font-size:12px;color:#fbbf24;margin:0;line-height:1.6;">
+          💡 <strong>核心策略</strong>：60分以上才可做多，-60分以下才可做空，严格控制风险
+        </p>
+      </div>
+    </div>
+
+    <!-- 声明 -->
+    <div style="background:#1e293b;border-radius:16px;padding:20px;margin-bottom:20px;">
+      <h2 style="font-size:16px;color:#f8fafc;margin:0 0 15px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:10px;">
+        ⚠️ 免责声明
+      </h2>
+      <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.8;">
+        本系统仅供技术研究参考，不构成任何投资建议。<br>
+        数字货币交易风险极高，可能导致本金全部损失。<br>
+        所有交易决策需用户自行判断，盈亏自负。
+      </p>
+    </div>
+
+    <!-- 关闭按钮 -->
+    <button onclick="hideAboutPanel()" style="width:100%;background:#374151;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;">
+      关闭
+    </button>
+  </div>
+</div>
+
+
+
+<script>
+function switchPage(page) {
+  // 隐藏主页面
+  document.getElementById('mainContent').style.display = 'none';
+  
+  // 更新导航状态
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  
+  // 显示对应页面
+  document.getElementById('mainContent').style.display = 'block';
+  document.querySelector('[data-page="main"]').classList.add('active');
+  
+  localStorage.setItem('lastPage', page);
+}
+</script>
+
+<!-- 版本信息面板 -->
+<div id="versionPanel" class="version-panel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;border-radius:20px;padding:24px;width:90%;max-width:500px;z-index:1000;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <h2 style="font-size:18px;color:#f8fafc;margin:0;">📚 版本迭代历史</h2>
+    <button onclick="hideVersionPanel()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">✕</button>
+  </div>
+  
+  <!-- 当前版本 -->
+  <div style="background:#0f172a;border-radius:12px;padding:16px;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <span style="font-size:14px;color:#94a3b8;">当前版本</span>
+      <span style="font-size:16px;color:#10b981;font-weight:bold;" id="currentVersion">V1</span>
+    </div>
+    <div style="font-size:14px;color:#cbd5e1;" id="currentFeature">简化版：0-100评分 · 60分以上做多 · 40分以下做空</div>
+  </div>
+  
+  <!-- 版本历史 -->
+  <div style="margin-bottom:20px;">
+    <h3 style="font-size:15px;color:#f8fafc;margin:0 0 12px;">📅 版本迭代路径</h3>
+    <div id="versionHistory" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+      <!-- 动态生成 -->
+    </div>
+  </div>
+  
+  <!-- 版本对比 -->
+  <div style="background:#0f172a;border-radius:12px;padding:16px;">
+    <h3 style="font-size:15px;color:#f8fafc;margin:0 0 12px;">📊 版本对比</h3>
+    <div id="versionComparison" style="font-size:13px;color:#94a3b8;line-height:1.6;">
+      <!-- 动态生成 -->
+    </div>
+  </div>
+  
+  <!-- 关闭按钮 -->
+  <button onclick="hideVersionPanel()" style="width:100%;background:#374151;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;margin-top:20px;">
+    关闭
+  </button>
+</div>
+
+<!-- 日志查看面板 -->
+<div id="logsPanel" class="logs-panel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1e293b;border-radius:20px;padding:24px;width:90%;max-width:600px;z-index:1000;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);max-height:80vh;overflow-y:auto;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <h2 style="font-size:18px;color:#f8fafc;margin:0;">📋 系统日志</h2>
+    <button onclick="hideLogsPanel()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">✕</button>
+  </div>
+  
+  <!-- 日志过滤选项 -->
+  <div style="display:flex;gap:10px;margin-bottom:16px;">
+    <button onclick="filterLogs('all')" class="log-filter-btn active" style="flex:1;background:#374151;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;">全部</button>
+    <button onclick="filterLogs('autoTrade')" class="log-filter-btn" style="flex:1;background:#374151;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;">交易</button>
+    <button onclick="filterLogs('signal')" class="log-filter-btn" style="flex:1;background:#374151;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;">信号</button>
+  </div>
+  
+  <!-- 日志内容 -->
+  <div id="logsContent" style="background:#0f172a;border-radius:12px;padding:16px;max-height:400px;overflow-y:auto;">
+    <div style="font-size:13px;color:#94a3b8;text-align:center;">加载日志中...</div>
+  </div>
+  
+  <!-- 操作按钮 -->
+  <div style="display:flex;gap:10px;margin-top:16px;">
+    <button onclick="clearLogs()" style="flex:1;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;">🗑️ 清空日志</button>
+    <button onclick="refreshLogs()" style="flex:1;background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;">🔄 刷新</button>
+  </div>
+</div>
+
+<!-- 显示关于面板函数 -->
+<script>
+function showAboutPanel() {
+  document.getElementById('aboutPanel').style.display = 'block'
+  document.body.style.overflow = 'hidden'
+}
+
+function hideAboutPanel() {
+  document.getElementById('aboutPanel').style.display = 'none'
+  document.body.style.overflow = ''
+}
+
+// 版本面板函数
+function showVersionPanel() {
+  document.getElementById('versionPanel').style.display = 'block'
+  document.body.style.overflow = 'hidden'
+  updateVersionInfo()
+}
+
+function hideVersionPanel() {
+  document.getElementById('versionPanel').style.display = 'none'
+  document.body.style.overflow = ''
+}
+
+// 日志面板函数
+function showLogsPanel() {
+  document.getElementById('logsPanel').style.display = 'block'
+  document.body.style.overflow = 'hidden'
+  refreshLogs()
+}
+
+function hideLogsPanel() {
+  document.getElementById('logsPanel').style.display = 'none'
+  document.body.style.overflow = ''
+}
+
+function refreshLogs() {
+  const logsContent = document.getElementById('logsContent')
+  if (!logsContent) return
+  
+  // 从localStorage获取日志
+  const logs = JSON.parse(localStorage.getItem('btc_logs') || '[]')
+  
+  if (logs.length === 0) {
+    logsContent.innerHTML = '<div style="font-size:13px;color:#94a3b8;text-align:center;">暂无日志</div>'
+    return
+  }
+  
+  // 按时间倒序排序
+  logs.sort((a, b) => b.timestamp - a.timestamp)
+  
+  // 生成日志HTML
+  const logsHTML = logs.map(log => {
+    let color = '#94a3b8' // 默认颜色
+    if (log.type === 'error') color = '#ef4444'
+    else if (log.type === 'info') color = '#3b82f6'
+    else if (log.type === 'success') color = '#10b981'
+    
+    return `
+      <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);">
+        <div style="font-size:11px;color:#64748b;margin-bottom:4px;">
+          ${new Date(log.timestamp).toLocaleString('zh-CN')}
+        </div>
+        <div style="font-size:12px;color:${color};">
+          ${log.message}
+        </div>
+        ${log.data ? `<div style="font-size:11px;color:#64748b;margin-top:4px;">${JSON.stringify(log.data)}</div>` : ''}
+      </div>
+    `
+  }).join('')
+  
+  logsContent.innerHTML = logsHTML
+}
+
+function filterLogs(filter) {
+  // 切换按钮状态
+  document.querySelectorAll('.log-filter-btn').forEach(btn => {
+    btn.classList.remove('active')
+    btn.style.background = '#374151'
+  })
+  
+  event.target.classList.add('active')
+  event.target.style.background = '#3b82f6'
+  
+  // 这里可以实现过滤逻辑
+  // 目前只刷新日志
+  refreshLogs()
+}
+
+function clearLogs() {
+  if (confirm('确定要清空所有日志吗？')) {
+    localStorage.removeItem('btc_logs')
+    refreshLogs()
+  }
+}
+
+// 日志记录函数
+function logMessage(type, message, data = null) {
+  const logs = JSON.parse(localStorage.getItem('btc_logs') || '[]')
+  
+  logs.push({
+    timestamp: Date.now(),
+    type: type,
+    message: message,
+    data: data
+  })
+  
+  // 只保留最近1000条日志
+  if (logs.length > 1000) {
+    logs.splice(0, logs.length - 1000)
+  }
+  
+  localStorage.setItem('btc_logs', JSON.stringify(logs))
+}
+
+// 重写console.log以同时记录到日志
+const originalLog = console.log
+console.log = function(...args) {
+  originalLog.apply(console, args)
+  
+  // 记录AutoTrade和信号相关的日志
+  if (args[0] && args[0].includes && (args[0].includes('[AutoTrade]') || args[0].includes('[Sim]') || args[0].includes('[Signal]'))) {
+    logMessage('info', args.join(' '))
+  }
+}
+
+const originalError = console.error
+console.error = function(...args) {
+  originalError.apply(console, args)
+  logMessage('error', args.join(' '))
+}
+
+const originalWarn = console.warn
+console.warn = function(...args) {
+  originalWarn.apply(console, args)
+  logMessage('warn', args.join(' '))
+}
+
+function updateVersionInfo() {
+  if (!window.BTCSignal?.VersionSystem) return
+  
+  const versionInfo = window.BTCSignal.VersionSystem.getVersionSummary()
+  const currentVersionEl = document.getElementById('currentVersion')
+  const currentFeatureEl = document.getElementById('currentFeature')
+  const historyEl = document.getElementById('versionHistory')
+  const comparisonEl = document.getElementById('versionComparison')
+  
+  if (currentVersionEl) currentVersionEl.textContent = versionInfo.current
+  if (currentFeatureEl) currentFeatureEl.textContent = versionInfo.feature
+  
+  // 生成历史卡片
+  if (historyEl && versionInfo.historyCount > 0) {
+    const historyHTML = window.BTCSignal.VersionSystem.versionHistory.map(v => `
+      <div style="background:${v.version === versionInfo.current ? '#10b98120' : '#374151'};border-radius:10px;padding:12px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span style="font-size:13px;color:#94a3b8;">${new Date(v.timestamp).toLocaleDateString('zh-CN')}</span>
+          <span style="font-size:14px;color:#${v.version === versionInfo.current ? '10b981' : 'cbd5e1'};font-weight:bold;">${v.version}</span>
+        </div>
+        <div style="font-size:12px;color:#94a3b8;">${v.features}</div>
+      </div>
+    `).join('')
+    historyEl.innerHTML = historyHTML
+  }
+  
+  // 版本对比
+  if (comparisonEl) {
+    const comparison = window.BTCSignal.VersionSystem.getVersionComparison()
+    if (comparison) {
+      comparisonEl.innerHTML = `
+        <div style="margin-bottom:8px;">
+          <span style="color:#f8fafc;">${comparison.comparison.versionChange}</span>
+          <span style="color:#94a3b8;margin-left:8px;">间隔${comparison.comparison.dateDiff}</span>
+        </div>
+        <div style="color:#cbd5e1;">
+          新增功能：${comparison.comparison.featureAdded.join(', ') || '无'}
+        </div>
+      `
+    } else {
+      comparisonEl.innerHTML = '<span style="color:#94a3b8;">暂无版本对比数据</span>'
+    }
+  }
+}
+
+// 绑定关于按钮（在设置按钮旁边添加）
+document.addEventListener('DOMContentLoaded', function() {
+  const settingsBtn = document.getElementById('settingsBtn')
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', showAboutPanel)
+  }
+  
+  // 清理本地存储中的旧版本历史
+  localStorage.removeItem('btc_versions')
+  localStorage.removeItem('btc_signal_history')
+  
+  // 初始化版本系统
+  if (window.BTCSignal?.VersionSystem) {
+    // 记录当前版本
+    window.BTCSignal.VersionSystem.recordVersion('V1', '基础版本：100分制评分系统', {
+      timestamp: new Date().toISOString(),
+      features: '基础版本：100分制评分系统'
+    })
+  }
+})
+</script>
+</body>
+</html>
