@@ -682,30 +682,30 @@ function calculateTradeLevels(signalType, bars, atrPeriod) {
   var recentLow = Math.min.apply(Math, recentLows);
   var recentHigh = Math.max.apply(Math, recentHighs);
   
-  // 调整止损距离，基于ATR的0.6倍，同时考虑最近的支撑位/阻力位
-  var stopLossMultiplier = 0.6; // 减小止损距离到0.6倍ATR
+  // 调整止损距离——高杠杆友好版（30x杠杆下约-1.5%~-2%）
+  var stopLossMultiplier = 0.25; // 缩小到0.25倍ATR，适配高杠杆
   
   if (signalType === 'long') {
-    entryZone = [price - currentATR * 0.5, price];
-    // 止损设置在最近低点下方或0.6倍ATR，取较大值
+    entryZone = [price - currentATR * 0.3, price];
+    // 止损：取 ATR×0.25 和 支撑位下方 的较小者（更紧凑）
     var atrStopLoss = price - currentATR * stopLossMultiplier;
-    var supportStopLoss = recentLow - 50; // 最近低点下方50点
-    stopLoss = Math.max(atrStopLoss, supportStopLoss);
+    var supportStopLoss = recentLow - currentATR * 0.15; // 支撑位下方0.15倍ATR
+    stopLoss = Math.min(atrStopLoss, supportStopLoss); // 取更近的止损
     takeProfits = [
-      price + currentATR * 1.2, // 止盈1：1.2倍ATR
-      price + currentATR * 2.0, // 止盈2：2.0倍ATR
-      price + currentATR * 2.8  // 止盈3：2.8倍ATR
+      price + currentATR * 0.8,  // 止盈1：0.8倍ATR（约+1%）
+      price + currentATR * 1.5,  // 止盈2：1.5倍ATR（约+2%）
+      price + currentATR * 2.5   // 止盈3：2.5倍ATR（约+3.5%）
     ];
   } else if (signalType === 'short') {
-    entryZone = [price, price + currentATR * 0.5];
-    // 止损设置在最近高点上方或0.6倍ATR，取较小值
+    entryZone = [price, price + currentATR * 0.3];
+    // 止损：取 ATR×0.25 和 阻力位上方 的较小者（更紧凑）
     var atrStopLoss = price + currentATR * stopLossMultiplier;
-    var resistanceStopLoss = recentHigh + 50; // 最近高点上方50点
-    stopLoss = Math.min(atrStopLoss, resistanceStopLoss);
+    var resistanceStopLoss = recentHigh + currentATR * 0.15; // 阻力位上方0.15倍ATR
+    stopLoss = Math.max(atrStopLoss, resistanceStopLoss); // 取更近的止损
     takeProfits = [
-      price - currentATR * 1.2, // 止盈1：1.2倍ATR
-      price - currentATR * 2.0, // 止盈2：2.0倍ATR
-      price - currentATR * 2.8  // 止盈3：2.8倍ATR
+      price - currentATR * 0.8,  // 止盈1：0.8倍ATR
+      price - currentATR * 1.5,  // 止盈2：1.5倍ATR
+      price - currentATR * 2.5   // 止盈3：2.5倍ATR
     ];
   }
   
@@ -850,19 +850,28 @@ async function detectSignal(interval) {
     short: prevBar.volume > getAverageVolume(bars, 20) * 1.2
   };
   
-  // 优化RSI条件：在趋势中允许更宽松的RSI范围
+  // ★ 修复：RSI条件 — 上升趋势中RSI高是强势表现，不应该阻止做多
+  // 做多：RSI未极端超买(>80)即可；超卖区域加分
+  // 做空：RSI未极端超卖(<20)即可；超买区域加分
   var rsiConditions = {
-    long: rsiVal < 45 || (trendDirection === 'up' && rsiVal < 55),  // 超卖区域或上升趋势中相对低位
-    short: rsiVal > 55 || (trendDirection === 'down' && rsiVal > 45)  // 超买区域或下降趋势中相对高位
+    // 做多：RSI<50中性偏弱 或 趋势向上时RSI<70（允许追涨）
+    long: rsiVal < 55 || (trendDirection === 'up' && rsiVal < 72) || (trendDirection === 'up' && rsiVal >= 55 && momentum > 0.5),
+    // 做空：RSI>50中性偏强 或 趋势向下时RSI>30（允许追空）
+    short: rsiVal > 45 || (trendDirection === 'down' && rsiVal > 28) || (trendDirection === 'down' && rsiVal <= 45 && momentum < -0.5)
   };
   
-  // 优化布林带条件：允许价格在布林带附近，不要求完全突破
+  // ★ 修复：布林带条件 — 价格在布林中轨上方=多头强势，不应作为做空理由！
+  // 做多：价格在布林中轨附近或上方（强势区）
+  // 做空：价格在布林中轨附近或下方（弱势区）
   var bollConditions = {
-    long: lastBar.close < bollLast.middle || lastBar.close < bollLast.lower * 1.02,
-    short: lastBar.close > bollLast.middle || lastBar.close > bollLast.upper * 0.98
+    // 做多：价格在中轨上方=强势 / 在中轨下方但接近下轨=超卖反弹机会
+    long: lastBar.close >= bollLast.middle * 0.98 || lastBar.close <= bollLast.lower * 1.03,
+    // 做空：价格在中轨下方=弱势 / 在中轨上方但接近上轨=超买回调机会
+    short: lastBar.close <= bollLast.middle * 1.02 || lastBar.close >= bollLast.upper * 0.97
   };
   
-  // ★ 增强趋势一致性检查 - 基于趋势强度动态调整
+  // ★ 修复：趋势一致性检查 — 原逻辑在强趋势中完全禁止反向信号，
+  //   但更重要的是：顺势信号应该更容易通过！
   var trendAlignment = {
     long: true,
     short: true
@@ -870,61 +879,49 @@ async function detectSignal(interval) {
   
   // 根据趋势强度动态调整信号允许范围
   if (trendDirection === 'up') {
-    // 上升趋势中：根据趋势强度限制做空信号
-    if (trendStrength >= 70) {
-      trendAlignment.short = false; // 强上升趋势中完全禁止做空
-    } else if (trendStrength >= 50) {
-      trendAlignment.short = false; // 中等上升趋势中禁止做空
-    }
-    // 上升趋势中做多信号更容易通过
+    // 上升趋势中：做多信号完全放开，做空信号需要更强理由
+    trendAlignment.long = true;  // 顺势做多始终允许
+    // 强上升趋势(>70)中不完全禁止做空，但要求更高门槛
+    // (由signalQuality的其他条件自然过滤)
   } else if (trendDirection === 'down') {
-    // 下降趋势中：根据趋势强度限制做多信号
-    if (trendStrength >= 70) {
-      trendAlignment.long = false; // 强下降趋势中完全禁止做多
-    } else if (trendStrength >= 50) {
-      trendAlignment.long = false; // 中等下降趋势中禁止做多
-    }
-    // 下降趋势中做空信号更容易通过
+    // 下降趋势中：做空信号完全放开，做多信号需要更强理由
+    trendAlignment.short = true; // 顺势做空始终允许
+    // 强下降趋势(>70)中不完全禁止做多
   } else {
-    // 震荡市中：根据趋势强度调整信号允许范围
-    if (trendStrength >= 60) {
-      // 强震荡市中，只允许与短期动量方向一致的信号
-      trendAlignment.long = momentum > 0;
-      trendAlignment.short = momentum < 0;
-    }
+    // 震荡市中：双向都允许，靠其他条件筛选
+    trendAlignment.long = true;
+    trendAlignment.short = true;
   }
   
-  // ★ 增强的信号质量过滤
+  // ★ 增强的信号质量过滤 — 修复：不要用MA/MACD作为硬性门槛
+  //   在强势趋势中，价格远离MA是正常现象，不应阻止信号
   var signalQuality = {
     long: {
       volume: volumeConditions.long,
       rsi: rsiConditions.long,
       boll: bollConditions.long,
       trend: trendAlignment.long,
-      // 额外条件：价格在MA上方
-      ma: lastBar.close > calculateMA(bars, 20),
-      // 额外条件：MACD金叉
-      macd: macdBar > 0 && macdData.dif[n] > macdData.dea[n],
-      // 变盘特殊条件
-      reversal: !trendInfo.isTrendReversal || (trendInfo.isTrendReversal && trendInfo.goldenCross),
-      // 额外条件：趋势强度
-      trendStrength: trendDirection === 'up' || (trendDirection === 'sideways' && trendStrength < 60)
+      // ★ 修复：MA条件 — 上升趋势中价格在MA上方是正常的
+      ma: trendDirection === 'up' ? (lastBar.close > calculateMA(bars, 20) || lastBar.close > calculateMA(bars, 60)) :
+           (lastBar.close > calculateMA(bars, 20)),
+      // ★ 修复：MACD条件 — 金叉或DIF>0都算多头
+      macd: macdBar > macdPrev || (macdData.dif[n] > macdData.dea[n]) || (macdData.dif[n] > 0 && momentum > 0),
+      reversal: true,  // 不再用变盘作为门槛
+      // 趋势强度：上升趋势中自然满足
+      trendStrength: true
     },
     short: {
       volume: volumeConditions.short,
       rsi: rsiConditions.short,
       boll: bollConditions.short,
       trend: trendAlignment.short,
-      // 额外条件：价格在MA下方
-      ma: lastBar.close < calculateMA(bars, 20),
-      // 额外条件：MACD死叉
-      macd: macdBar < 0 && macdData.dif[n] < macdData.dea[n],
-      // 变盘特殊条件
-      reversal: !trendInfo.isTrendReversal || (trendInfo.isTrendReversal && trendInfo.deathCross),
-      // 额外条件：趋势强度
-      trendStrength: trendDirection === 'down' || (trendDirection === 'sideways' && trendStrength < 60),
-      // 额外条件：在强上升趋势中禁止做空
-      noStrongUpTrend: !(trendDirection === 'up' && trendStrength > 60)
+      // ★ 修复：MA条件 — 下降趋势中价格在MA下方是正常的
+      ma: trendDirection === 'down' ? (lastBar.close < calculateMA(bars, 20) || lastBar.close < calculateMA(bars, 60)) :
+           (lastBar.close < calculateMA(bars, 20)),
+      // ★ 修复：MACD条件 — 死叉或DIF<0都算空头
+      macd: macdBar < macdPrev || (macdData.dif[n] < macdData.dea[n]) || (macdData.dif[n] < 0 && momentum < 0),
+      reversal: true,  // 不再用变盘作为门槛
+      trendStrength: true
     }
   };
   
@@ -938,8 +935,14 @@ async function detectSignal(interval) {
   var longQualityScore = calculateQualityScore(signalQuality.long);
   var shortQualityScore = calculateQualityScore(signalQuality.short);
   
-  // 增强的做多信号条件
-  if (isLongPin && c2Long && c4Long && (longQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.goldenCross && longQualityScore >= 60))) {
+  // ★ 增强的做多信号条件 — 新增：趋势跟踪信号（不依赖插针）
+  // 原逻辑：只检测插针反转形态，完全错过强势上涨行情
+  // 新逻辑：插针反转 OR 趋势跟踪（连续阳线+放量+MACD多头）
+  var isTrendFollowLong = !isLongPin && c2Long && c4Long && 
+    trendDirection === 'up' && trendStrength >= 40 &&
+    momentum > 0.3 && volumeConditions.long;
+  
+  if ((isLongPin && c2Long && c4Long && (longQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.goldenCross && longQualityScore >= 60))) || isTrendFollowLong) {
     // 检查信号冷却
     var lastSignal = getLastSignalInfo();
     var canGenerateSignal = checkSignalCooldown(lastSignal, 'long');
@@ -950,8 +953,12 @@ async function detectSignal(interval) {
     }
   }
   
-  // 增强的做空信号条件
-  if (isShortPin && c2Short && c4Short && (shortQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.deathCross && shortQualityScore >= 60))) {
+  // ★ 增强的做空信号条件 — 新增：趋势跟踪信号
+  var isTrendFollowShort = !isShortPin && c2Short && c4Short && 
+    trendDirection === 'down' && trendStrength >= 40 &&
+    momentum < -0.3 && volumeConditions.short;
+  
+  if ((isShortPin && c2Short && c4Short && (shortQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.deathCross && shortQualityScore >= 60))) || isTrendFollowShort) {
     // 检查信号冷却
     var lastSignal = getLastSignalInfo();
     var canGenerateSignal = checkSignalCooldown(lastSignal, 'short');
@@ -996,9 +1003,10 @@ async function detectSignal(interval) {
   
   // 横盘整理特殊处理：降低信号评分
     
-    // 横盘整理特殊处理：降低信号评分
-    if (trendInfo.trend === 'sideways') {
-      var sidewaysReduction = 15;
+    // ★ 修复：横盘整理特殊处理 — 原来直接-15分太粗暴
+    // 现在只轻微降分，且如果动量明确就不降
+    if (trendInfo.trend === 'sideways' && Math.abs(momentum) < 0.3) {
+      var sidewaysReduction = 8;  // 从15降到8
       signalStrength = Math.max(0, signalStrength - sidewaysReduction);
     }
     
@@ -1008,15 +1016,36 @@ async function detectSignal(interval) {
   
   var tradeLevels = signalType ? calculateTradeLevels(signalType, bars) : null;
   
-  // 计算支撑位和阻力位
-  var recentLows = [];
-  var recentHighs = [];
-  for (var i = Math.max(0, bars.length - 20); i < bars.length; i++) {
-    recentLows.push(bars[i].low);
-    recentHighs.push(bars[i].high);
+  // ★ 智能计算支撑位和阻力位（找局部高低点，而非简单极值）
+  var lookback = Math.min(bars.length, 30);
+  var pivotPoints = { supports: [], resistances: [] };
+  for (var pi = bars.length - lookback + 2; pi < bars.length - 1; pi++) {
+    // 局部低点 = 支撑（左右各1根K线都比它高）
+    if (bars[pi].low <= bars[pi-1].low && bars[pi].low <= bars[pi+1].low) {
+      pivotPoints.supports.push(bars[pi].low);
+    }
+    // 局部高点 = 阻力（左右各1根K线都比它低）
+    if (bars[pi].high >= bars[pi-1].high && bars[pi].high >= bars[pi+1].high) {
+      pivotPoints.resistances.push(bars[pi].high);
+    }
   }
-  var nearestSupport = Math.min.apply(Math, recentLows);
-  var nearestResistance = Math.max.apply(Math, recentHighs);
+  // 取最近的支撑/阻力；如果没有局部高低点则回退到简单极值
+  var currentPrice = lastBar.close;
+  var nearestSupport, nearestResistance;
+  if (pivotPoints.supports.length > 0) {
+    // 取低于当前价格的最近支撑
+    var validSupports = pivotPoints.supports.filter(function(s) { return s < currentPrice; });
+    nearestSupport = validSupports.length > 0 ? Math.max.apply(Math, validSupports) : Math.min.apply(Math, pivotPoints.supports);
+  } else {
+    nearestSupport = Math.min.apply(Math, bars.slice(-20).map(function(b){return b.low;}));
+  }
+  if (pivotPoints.resistances.length > 0) {
+    // 取高于当前价格的最近阻力
+    var validResistances = pivotPoints.resistances.filter(function(r) { return r > currentPrice; });
+    nearestResistance = validResistances.length > 0 ? Math.min.apply(Math, validResistances) : Math.max.apply(Math, pivotPoints.resistances);
+  } else {
+    nearestResistance = Math.max.apply(Math, bars.slice(-20).map(function(b){return b.high;}));
+  }
   
   var positionAdvice = signalType && tradeLevels ? 
     calculatePositionAdvice(

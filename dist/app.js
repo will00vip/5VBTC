@@ -1571,6 +1571,8 @@ async function detectSignal3Step(interval) {
       signalStrength: starRating,
       starRating: signalType ? `${starRating}星` : '无信号',
       score,
+      // ★ 修复：添加signalConfidence字段（UI依赖此字段判断方向！）
+      signalConfidence: signalType === 'long' ? score * 8 : (signalType === 'short' ? -score * 8 : 0),
       bars: displayBars,     // 图表用5m数据
       h1Bars, dailyBars,
 
