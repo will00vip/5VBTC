@@ -935,14 +935,22 @@ async function detectSignal(interval) {
   var longQualityScore = calculateQualityScore(signalQuality.long);
   var shortQualityScore = calculateQualityScore(signalQuality.short);
   
-  // ★ 增强的做多信号条件 — 新增：趋势跟踪信号（不依赖插针）
-  // 原逻辑：只检测插针反转形态，完全错过强势上涨行情
-  // 新逻辑：插针反转 OR 趋势跟踪（连续阳线+放量+MACD多头）
+  // ★ 增强的做多信号条件 — 三种触发模式
+  // 模式1: 插针反转（原逻辑）
+  // 模式2: 趋势跟踪（连续阳线+放量+MACD多头）
+  // 模式3: 动量突破（大涨时即使没有插针也要捕获！关键修复！）
   var isTrendFollowLong = !isLongPin && c2Long && c4Long && 
     trendDirection === 'up' && trendStrength >= 40 &&
     momentum > 0.3 && volumeConditions.long;
+    
+  // ★ 模式3：动量突破 — 价格短期大幅上涨(+1%+)且MACD多头，直接触发做多
+  // 这是解决"大涨显示偏空"的核心修复！
+  var isMomentumBreakoutLong = (momentum > 1.0) &&  // 短期涨幅>1%
+    (macdData.dif[n] > macdData.dea[n] || macdBar > 0) &&  // MACD多头
+    (lastBar.close > lastBar.open) &&  // 当前K线是阳线
+    (trendDirection === 'up' || trendDirection === 'sideways');  // 非下降趋势
   
-  if ((isLongPin && c2Long && c4Long && (longQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.goldenCross && longQualityScore >= 60))) || isTrendFollowLong) {
+  if ((isLongPin && c2Long && c4Long && (longQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.goldenCross && longQualityScore >= 60))) || isTrendFollowLong || isMomentumBreakoutLong) {
     // 检查信号冷却
     var lastSignal = getLastSignalInfo();
     var canGenerateSignal = checkSignalCooldown(lastSignal, 'long');
@@ -953,12 +961,18 @@ async function detectSignal(interval) {
     }
   }
   
-  // ★ 增强的做空信号条件 — 新增：趋势跟踪信号
+  // ★ 增强的做空信号条件 — 三种触发模式（与做多对称）
   var isTrendFollowShort = !isShortPin && c2Short && c4Short && 
     trendDirection === 'down' && trendStrength >= 40 &&
     momentum < -0.3 && volumeConditions.short;
+    
+  // ★ 模式3：动量突破做空
+  var isMomentumBreakoutShort = (momentum < -1.0) &&  // 短期跌幅>1%
+    (macdData.dif[n] < macdData.dea[n] || macdBar < 0) &&  // MACD空头
+    (lastBar.close < lastBar.open) &&  // 当前K线是阴线
+    (trendDirection === 'down' || trendDirection === 'sideways');  // 非上升趋势
   
-  if ((isShortPin && c2Short && c4Short && (shortQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.deathCross && shortQualityScore >= 60))) || isTrendFollowShort) {
+  if ((isShortPin && c2Short && c4Short && (shortQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.deathCross && shortQualityScore >= 60))) || isTrendFollowShort || isMomentumBreakoutShort) {
     // 检查信号冷却
     var lastSignal = getLastSignalInfo();
     var canGenerateSignal = checkSignalCooldown(lastSignal, 'short');
@@ -1055,10 +1069,24 @@ async function detectSignal(interval) {
       CONFIG.ACCOUNT_BALANCE || 10000
     ) : null;
   
-  // 修复：signalConfidence应该根据信号类型保持正负号
-  // 对于做多信号，signalStrength是正数，signalConfidence保持正数
-  // 对于做空信号，signalStrength是正数，signalConfidence转为负数
-  const signalConfidence = signalType === 'long' ? signalStrength : -signalStrength;
+  // ★ 关键修复：signalConfidence 必须反映实际趋势方向！
+  // 即使没有触发正式信号(signalType=null)，如果趋势明显上涨，
+  // signalConfidence 也应该是正数（让UI显示偏多而非偏空）
+  let signalConfidence = 0;
+  if (signalType === 'long') {
+    signalConfidence = signalStrength;  // 做多：正分
+  } else if (signalType === 'short') {
+    signalConfidence = -signalStrength;  // 做空：负分
+  } else {
+    // ★ 无正式信号时，用趋势+动量推算一个方向性分数
+    // 这样UI就不会在大涨时显示"偏空观察"
+    if (trendDirection === 'up' && momentum > 0.2) {
+      signalConfidence = Math.min(75, Math.max(50, Math.round(trendStrength * 0.6 + Math.abs(momentum) * 5)));
+    } else if (trendDirection === 'down' && momentum < -0.2) {
+      signalConfidence = -Math.min(75, Math.max(50, Math.round(trendStrength * 0.6 + Math.abs(momentum) * 5)));
+    }
+    // 其他情况保持0（无信号）
+  }
   
   var result = {
     type: signalType,
