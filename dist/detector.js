@@ -943,12 +943,13 @@ async function detectSignal(interval) {
     trendDirection === 'up' && trendStrength >= 40 &&
     momentum > 0.3 && volumeConditions.long;
     
-  // ★ 模式3：动量突破 — 价格短期大幅上涨(+1%+)且MACD多头，直接触发做多
+  // ★ 模式3：动量突破 — 价格短期上涨且MACD多头，直接触发做多
   // 这是解决"大涨显示偏空"的核心修复！
-  var isMomentumBreakoutLong = (momentum > 1.0) &&  // 短期涨幅>1%
-    (macdData.dif[n] > macdData.dea[n] || macdBar > 0) &&  // MACD多头
+  // 阈值从1.0降到0.3（更灵敏）
+  var isMomentumBreakoutLong = (momentum > 0.3) &&  // 短期涨幅>0.3%（降低门槛！）
+    (macdData.dif[n] > macdData.dea[n] || macdBar > 0 || macdData.dif[n] > 0) &&  // MACD多头（放宽条件）
     (lastBar.close > lastBar.open) &&  // 当前K线是阳线
-    (trendDirection === 'up' || trendDirection === 'sideways');  // 非下降趋势
+    (trendDirection !== 'down');  // 只要在下降趋势中就行
   
   if ((isLongPin && c2Long && c4Long && (longQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.goldenCross && longQualityScore >= 60))) || isTrendFollowLong || isMomentumBreakoutLong) {
     // 检查信号冷却
@@ -966,11 +967,11 @@ async function detectSignal(interval) {
     trendDirection === 'down' && trendStrength >= 40 &&
     momentum < -0.3 && volumeConditions.short;
     
-  // ★ 模式3：动量突破做空
-  var isMomentumBreakoutShort = (momentum < -1.0) &&  // 短期跌幅>1%
-    (macdData.dif[n] < macdData.dea[n] || macdBar < 0) &&  // MACD空头
+  // ★ 模式3：动量突破做空（与做多对称）
+  var isMomentumBreakoutShort = (momentum < -0.3) &&  // 短期跌幅>0.3%（降低门槛）
+    (macdData.dif[n] < macdData.dea[n] || macdBar < 0 || macdData.dif[n] < 0) &&  // MACD空头
     (lastBar.close < lastBar.open) &&  // 当前K线是阴线
-    (trendDirection === 'down' || trendDirection === 'sideways');  // 非上升趋势
+    (trendDirection !== 'up');  // 只要在非上升趋势中就行
   
   if ((isShortPin && c2Short && c4Short && (shortQualityScore >= 70 || (trendInfo.isTrendReversal && trendInfo.deathCross && shortQualityScore >= 60))) || isTrendFollowShort || isMomentumBreakoutShort) {
     // 检查信号冷却
@@ -1080,10 +1081,22 @@ async function detectSignal(interval) {
   } else {
     // ★ 无正式信号时，用趋势+动量推算一个方向性分数
     // 这样UI就不会在大涨时显示"偏空观察"
-    if (trendDirection === 'up' && momentum > 0.2) {
-      signalConfidence = Math.min(75, Math.max(50, Math.round(trendStrength * 0.6 + Math.abs(momentum) * 5)));
-    } else if (trendDirection === 'down' && momentum < -0.2) {
-      signalConfidence = -Math.min(75, Math.max(50, Math.round(trendStrength * 0.6 + Math.abs(momentum) * 5)));
+    // 放宽条件：只要不是反向就给正分
+    if (trendDirection === 'up' && momentum >= 0) {
+      // 上升趋势 + 正动量/零动量 → 偏多
+      var longScore = Math.min(82, Math.max(55, Math.round(trendStrength * 0.5 + Math.abs(momentum) * 8 + 40)));
+      signalConfidence = longScore;
+    } else if (trendDirection === 'down' && momentum <= 0) {
+      // 下降趋势 + 负动量/零动量 → 偏空
+      var shortScore = Math.min(82, Math.max(55, Math.round(trendStrength * 0.5 + Math.abs(momentum) * 8 + 40)));
+      signalConfidence = -shortScore;
+    } else if (trendDirection === 'sideways') {
+      // 震荡市：用纯动量判断方向
+      if (momentum > 0.15) {
+        signalConfidence = Math.min(70, Math.max(50, Math.round(45 + Math.abs(momentum) * 10)));
+      } else if (momentum < -0.15) {
+        signalConfidence = -Math.min(70, Math.max(50, Math.round(45 + Math.abs(momentum) * 10)));
+      }
     }
     // 其他情况保持0（无信号）
   }
