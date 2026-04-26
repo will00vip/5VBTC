@@ -146,7 +146,10 @@
   <!-- K线图 -->
   <section class="integrated-chart-section">
     <div class="chart-legend">
-      <span class="legend-title">K线 · <span id="chartIntervalLabel">15M</span></span>
+      <span class="legend-title" style="display:flex;align-items:center;gap:6px;">
+        <button id="chartSymbolToggle" onclick="toggleChartSymbol()" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:bold;cursor:pointer;min-width:38px;text-align:center;transition:all 0.2s;" title="点击切换BTC/ETH">BTC</button>
+        <span>K线 · <span id="chartIntervalLabel">15M</span></span>
+      </span>
       <div class="legend-items">
         <span class="legend-item"><span class="legend-dot k-up"></span>涨</span>
         <span class="legend-item"><span class="legend-dot k-down"></span>跌</span>
@@ -1252,41 +1255,58 @@ function _doSwitch(symbol) {
   switchSymbol(symbol);
 }
 
-// 交易对切换函数
-function switchSymbol(symbol) {
-  if (!symbol || !['BTCUSDT', 'ETHUSDT'].includes(symbol)) return;
-  if (window.setSymbol) window.setSymbol(symbol);
-  const btn = document.getElementById('symbolBtn');
-  if (btn) btn.textContent = symbol === 'BTCUSDT' ? '₿' : 'Ξ';
-  const titleMain = document.getElementById('titleMain');
-  if (titleMain) titleMain.textContent = symbol === 'BTCUSDT' ? 'BTC雷达' : 'ETH雷达';
-  // 重新获取数据
-  if (window.fetchKlines) {
-    window.fetchKlines('15m', 200).then(() => {
-      if (window.detectSignal) window.detectSignal();
-    });
-  }
+// 点击K线图上的交易对按钮切换
+function toggleChartSymbol() {
+  const current = window.getSymbol ? window.getSymbol() : 'BTCUSDT';
+  const next = current === 'BTCUSDT' ? 'ETHUSDT' : 'BTCUSDT';
+  switchSymbol(next);
 }
 
-// 交易对切换函数
+// 交易对切换函数（唯一版本）
 function switchSymbol(symbol) {
-  if (window.setSymbol && window.setSymbol(symbol)) {
-    const btn = document.getElementById('symbolBtn');
-    if (btn) {
-      btn.textContent = symbol === 'BTCUSDT' ? '₿' : 'Ξ';
-    }
-    // 更新标题
-    const titleMain = document.getElementById('titleMain');
-    if (titleMain) {
-      const baseName = symbol === 'BTCUSDT' ? 'BTC' : 'ETH';
-      titleMain.textContent = baseName + '雷达';
-    }
-    // 重新获取数据
-    if (window.fetchKlines) {
-      window.fetchKlines('15m', 200).then(() => {
-        if (window.detectSignal) window.detectSignal();
-      });
-    }
+  if (!symbol || !['BTCUSDT', 'ETHUSDT'].includes(symbol)) return;
+  
+  // 1. 切换交易对
+  if (window.setSymbol) window.setSymbol(symbol);
+  
+  // 2. 更新顶部按钮
+  const btn = document.getElementById('symbolBtn');
+  if (btn) btn.textContent = symbol === 'BTCUSDT' ? '₿' : 'Ξ';
+  
+  // 3. 更新标题
+  const titleMain = document.getElementById('titleMain');
+  if (titleMain) titleMain.textContent = symbol === 'BTCUSDT' ? 'BTC雷达' : 'ETH雷达';
+  
+  // 4. 更新K线图上的切换按钮
+  const chartToggle = document.getElementById('chartSymbolToggle');
+  if (chartToggle) {
+    const baseName = symbol === 'BTCUSDT' ? 'BTC' : 'ETH';
+    chartToggle.textContent = baseName;
+    chartToggle.style.background = symbol === 'BTCUSDT' 
+      ? 'linear-gradient(135deg,#f59e0b,#d97706)' 
+      : 'linear-gradient(135deg,#6366f1,#4f46e5)';
+  }
+  
+  // 5. 重连WebSocket（新symbol的实时流）
+  if (typeof startWebSocket === 'function') {
+    if (_ws && _ws.readyState === WebSocket.OPEN) _ws.close();
+    startWebSocket();
+  }
+  
+  // 6. 并行获取多周期K线 + 重新检测信号
+  if (window.fetchKlines) {
+    // 先获取当前周期K线刷新图表
+    const currentInterval = document.querySelector('.period-tab.active');
+    const interval = currentInterval ? currentInterval.dataset.interval : '15m';
+    
+    window.fetchKlines(interval, 200).then(() => {
+      if (window.detectSignal) window.detectSignal();
+    });
+    
+    // 并行预加载其他周期
+    ['5m','1h','4h','1d'].forEach(iv => {
+      if (iv !== interval) window.fetchKlines(iv, 100).catch(() => {});
+    });
   }
 }
 
