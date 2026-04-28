@@ -810,6 +810,9 @@ window.setSymbol = setSymbol
 window.getSymbol = getSymbol
 // 全局暴露 fetchKlines，让 ui.js 里的 runSimulation 可以直接调用
 window.fetchKlines = fetchKlines
+// 暴露WebSocket相关，让index.html的switchSymbol可以调用
+Object.defineProperty(window, '_ws', { get: () => _ws })
+window.startWebSocket = startWebSocket
 
 // ══════════════════════════════════════════
 // WebSocket实时K线推送（毫秒级响应）

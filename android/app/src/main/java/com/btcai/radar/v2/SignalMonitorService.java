@@ -1,4 +1,4 @@
-package com.btcai.radar.v2;
+﻿package com.btcai.radar.v2;
 
 import android.app.Notification;
 import android.app.NotificationManager;

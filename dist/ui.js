@@ -1,5 +1,23 @@
 // UI交互逻辑 - 5维度100分制打分系统
 
+// ★ 全局错误捕获 - 调试用
+window.onerror = function(msg, url, line, col, err) {
+  console.error('[全局错误]', msg, 'L' + line + ':' + col, err?.stack || '')
+  const debugEl = document.getElementById('debugLog')
+  if (debugEl) {
+    debugEl.style.display = 'block'
+    debugEl.textContent = '[ERROR L' + line + '] ' + msg
+  }
+}
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[未捕获Promise]', e.reason)
+  const debugEl = document.getElementById('debugLog')
+  if (debugEl) {
+    debugEl.style.display = 'block'
+    debugEl.textContent = '[Promise ERROR] ' + (e.reason?.message || e.reason)
+  }
+})
+
 // ★ Capacitor 插件初始化
 const HapticFeedback = window.Capacitor?.Plugins?.HapticFeedback
 const SMS = window.Capacitor?.Plugins?.SMS
@@ -78,11 +96,21 @@ class AutoPushSystem {
       return
     }
     
+    const isStrong = absScore >= 85
+    
+    // direction字段也区分级别：强信号=做多/做空，观察=偏多/偏空观察
+    let dirText
+    if (result.type === 'long') {
+      dirText = isStrong ? '做多信号' : '偏多观察'
+    } else {
+      dirText = isStrong ? '做空信号' : '偏空观察'
+    }
+    
     const pushRecord = {
       id: Date.now().toString(),
       time: Date.now(),
       type: result.type,
-      direction: (absScore >= 85) ? (result.type === 'long' ? '做多信号' : '做空信号') : (result.type === 'long' ? '偏多观察' : '偏空观察'),
+      direction: dirText,
       score: score, // 保存原始分数，保留正负号
       price: price || result.bars?.[result.bars.length - 1]?.close,
       tradeLevels: result.tradeLevels,
@@ -110,13 +138,16 @@ class AutoPushSystem {
     const score = record.score || 0
     const absScore = Math.abs(score)
     const isLong = score > 0
+    const isStrong = absScore >= 85
     
-    // 根据分数确定通知标题
-    let title
+    // 根据分数确定通知标题 — 强信号🔥🔥突出，观察👁温和
+    let title, emoji
     if (absScore >= 85) {
-      title = isLong ? '🟢 做多信号' : '🔴 做空信号'
+      emoji = isLong ? '🟢' : '🔴'
+      title = isLong ? '🔥🔥 做多信号' : '🔥🔥 做空信号'
     } else if (absScore >= 60 && absScore < 85) {
-      title = isLong ? '🟢 偏多观察' : '🔴 偏空观察'
+      emoji = isLong ? '🔵' : '🟠'
+      title = isLong ? '👁 偏多观察' : '👁 偏空观察'
     } else {
       // 60分以下不发送通知
       return
@@ -237,14 +268,15 @@ function updatePushManagementUI() {
   // 使用新的getStats方法获取统计数据
   const stats = pushSystem.getStats()
   
-  // 更新界面
-  document.getElementById('totalPushes').textContent = stats.total
-  document.getElementById('winCount').textContent = stats.success
-  document.getElementById('lossCount').textContent = stats.failed
-  document.getElementById('winRate').textContent = `${stats.winRate}%`
-  document.getElementById('recentWinRate').textContent = `${stats.recentWinRate}%`
-  document.getElementById('longShortRatio').textContent = `${stats.longCount} / ${stats.shortCount}`
-  document.getElementById('avgScore').textContent = stats.avgScore
+  // 更新界面（带null保护）
+  const el = id => document.getElementById(id)
+  if (el('totalPushes')) el('totalPushes').textContent = stats.total
+  if (el('winCount')) el('winCount').textContent = stats.success
+  if (el('lossCount')) el('lossCount').textContent = stats.failed
+  if (el('winRate')) el('winRate').textContent = `${stats.winRate}%`
+  if (el('recentWinRate')) el('recentWinRate').textContent = `${stats.recentWinRate}%`
+  if (el('longShortRatio')) el('longShortRatio').textContent = `${stats.longCount} / ${stats.shortCount}`
+  if (el('avgScore')) el('avgScore').textContent = stats.avgScore
   
   // 更新历史记录列表
   updatePushHistoryList()
@@ -491,6 +523,7 @@ let signalCache = null
 const SIGNAL_CACHE_DURATION = 60 * 1000 // 60秒缓存
 
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('[DOMContentLoaded-2] 触发')
   // 初始化系统
   initSystem()
   
@@ -740,8 +773,12 @@ function _showChartError(msg) {
 
 // 绑定事件
 function bindEvents() {
+  console.log('[bindEvents] 开始绑定事件')
   // 免责声明同意按钮
-  document.getElementById('agreeBtn').addEventListener('click', function() {
+  const agreeBtn = document.getElementById('agreeBtn')
+  console.log('[bindEvents] agreeBtn:', agreeBtn ? 'FOUND' : 'NOT FOUND')
+  agreeBtn.addEventListener('click', function() {
+    console.log('[agreeBtn] 点击了！')
     localStorage.setItem('disclaimerAgreed', 'true')
     document.getElementById('disclaimerModal').style.display = 'none'
     startApp()
@@ -1109,6 +1146,16 @@ function displaySignalInfo(result) {
       if (tp1) tp1.textContent = tradeLevels.takeProfits[0]
       if (tp2) tp2.textContent = tradeLevels.takeProfits[1]
       if (tp3) tp3.textContent = tradeLevels.takeProfits[2]
+    }
+    
+    // 支撑位 / 压力位
+    if (result.nearestSupport !== undefined && result.nearestSupport !== null) {
+      const supportEl = document.getElementById('nearestSupport')
+      if (supportEl) supportEl.textContent = Math.round(result.nearestSupport * 100) / 100
+    }
+    if (result.nearestResistance !== undefined && result.nearestResistance !== null) {
+      const resistanceEl = document.getElementById('nearestResistance')
+      if (resistanceEl) resistanceEl.textContent = Math.round(result.nearestResistance * 100) / 100
     }
   }
   

@@ -1,4 +1,4 @@
-package com.btcai.radar.v2;
+﻿package com.btcai.radar.v2;
 
 import android.app.Notification;
 import android.app.NotificationManager;
@@ -152,7 +152,7 @@ public class SignalMonitorService extends Service {
                             long now = System.currentTimeMillis();
                             if (now - lastNotifyTime > COOL_DOWN) {
                                 lastNotifyTime = now;
-                                showSignalNotification(direction, score, result.reason);
+                                showSignalNotification(direction, score, result);
                             }
                         }
                     }
@@ -367,7 +367,7 @@ public class SignalMonitorService extends Service {
         return sum / period;
     }
 
-    private void showSignalNotification(String direction, int score, String reason) {
+    private void showSignalNotification(String direction, int score, SignalResult result) {
         Intent intent = new Intent(this, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
@@ -389,7 +389,9 @@ public class SignalMonitorService extends Service {
         // 标题：强信号用闪电+大字，观察用眼睛+小字
         String title = levelIcon + " " + signalLevelText;
         // 内容：emoji + 分数 + 原因
-        String content = emoji + " " + score + "分  " + signalLevelText + "\n" + reason;
+        // 添加支撑阻力位信息
+        String levels = "\n支撑: " + formatPrice(result.supportLevel) + " | 压力: " + formatPrice(result.resistanceLevel);
+        String content = emoji + " " + score + "分  " + signalLevelText + "\n" + reason + levels;
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)

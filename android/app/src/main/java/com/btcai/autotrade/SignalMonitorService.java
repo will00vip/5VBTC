@@ -195,7 +195,8 @@ public class SignalMonitorService extends Service {
                             if (now - lastNotifyTime > COOL_DOWN) {
                                 lastNotifyTime = now;
                                 showSignalNotification(direction, score, result.reason, 
-                                    result.price, result.stopLoss, result.takeProfit1, result.takeProfit2, result.leverage);
+                                    result.price, result.stopLoss, result.takeProfit1, result.takeProfit2, result.leverage,
+                                    result.supportLevel, result.resistanceLevel, result.signalMode);
                                 
                                 // ★ 触发自动交易
                                 String tradeDirection = score >= 60 ? "long" : "short";
@@ -228,6 +229,10 @@ public class SignalMonitorService extends Service {
         double takeProfit1; // 止盈1
         double takeProfit2; // 止盈2
         int leverage;      // 建议杠杆倍数
+        double supportLevel;   // 支撑位
+        double resistanceLevel; // 压力位
+        double atr;            // ATR值
+        String signalMode;     // 信号模式: 'pin':插针反转, 'trend':趋势追单, 'momentum':动量突破
     }
 
     // 完整技术分析
@@ -384,22 +389,94 @@ public class SignalMonitorService extends Service {
             // 设置当前价格
             result.price = currentPrice;
             
-            // 计算止损和止盈（基于ATR或固定百分比）
+            // ========== 信号模式判断(与前端detector.js保持一致) ==========
+            // 判断是插针反转型、趋势追单型还是动量突破型
+            double lastClose = closes.get(closes.size() - 1);
+            double lastHigh = highs.get(highs.size() - 1);
+            double lastLow = lows.get(lows.size() - 1);
+            double lastOpen = closes.get(closes.size() - 2);
+            double prevHigh = highs.get(highs.size() - 2);
+            double prevLow = lows.get(lows.size() - 2);
+            double body = Math.abs(lastClose - lastOpen);
+            double upperShadow = lastHigh - Math.max(lastClose, lastOpen);
+            double lowerShadow = Math.min(lastClose, lastOpen) - lastLow;
+            double prevBody = Math.abs(closes.get(closes.size() - 2) - closes.get(closes.size() - 3));
+            double prevUpperShadow = prevHigh - Math.max(closes.get(closes.size() - 2), closes.get(closes.size() - 3));
+            double prevLowerShadow = Math.min(closes.get(closes.size() - 2), closes.get(closes.size() - 3)) - prevLow;
+
+            // 做多信号模式判断
+            if (result.direction.equals("做多")) {
+                // 插针反转型: 下影线>实体3倍
+                boolean isLongPin = (lowerShadow >= body * 3 && lastClose > (lastLow + (lastHigh - lastLow) * 0.6)) ||
+                                   (prevLowerShadow >= prevBody * 2.5 && closes.get(closes.size() - 2) > (prevLow + (prevHigh - prevLow) * 0.6));
+                // 趋势追多: 均线多头+上涨动能
+                boolean isTrendFollowLong = ma5 > ma20 && lastClose > lastOpen;
+                // 动量突破型: 涨幅>0.5%+MACD多头
+                boolean isMomentumBreakoutLong = (lastClose - lastOpen) / lastOpen > 0.005 && macdHist > 0;
+
+                if (isLongPin && macdHist >= 0) {
+                    result.signalMode = "pin";
+                } else if (isTrendFollowLong) {
+                    result.signalMode = "trend";
+                } else {
+                    result.signalMode = "momentum";
+                }
+            }
+            // 做空信号模式判断
+            else if (result.direction.equals("做空")) {
+                // 插针反转型: 上影线>实体3倍
+                boolean isShortPin = (upperShadow >= body * 3 && lastClose < (lastHigh - (lastHigh - lastLow) * 0.6)) ||
+                                    (prevUpperShadow >= prevBody * 2.5 && closes.get(closes.size() - 2) < (prevHigh - (prevHigh - prevLow) * 0.6));
+                // 趋势追空: 均线空头+下跌动能
+                boolean isTrendFollowShort = ma5 < ma20 && lastClose < lastOpen;
+                // 动量突破型: 跌幅>0.5%+MACD空头
+                boolean isMomentumBreakoutShort = (lastOpen - lastClose) / lastOpen > 0.005 && macdHist < 0;
+
+                if (isShortPin && macdHist <= 0) {
+                    result.signalMode = "pin";
+                } else if (isTrendFollowShort) {
+                    result.signalMode = "trend";
+                } else {
+                    result.signalMode = "momentum";
+                }
+            }
+            
+            // 计算ATR和支撑阻力位
             double atr = calculateATR(highs, lows, closes, 14);
             double atrPercent = (atr / currentPrice) * 100;
+            double[] supportResistance = calculateSupportResistance(highs, lows, closes);
+            result.supportLevel = supportResistance[0];
+            result.resistanceLevel = supportResistance[1];
+            result.atr = atr;
             
-            // 止损：做多时低于入场价，做空时高于入场价
-            // 使用固定5%止损策略
-            double stopLossPercent = 0.05; // 5%止损
+            // 止损止盈计算（基于ATR，最大1.5倍ATR）
+            double atrMultiplierSL = 1.0;  // 止损1倍ATR
+            double atrMultiplierTP1 = 1.5; // 止盈1.5倍ATR
+            double atrMultiplierTP2 = 2.5; // 止盈2.5倍ATR
+            double maxStopLossPercent = 0.015; // 最大1.5%止损
             
             if (result.direction.equals("做多")) {
-                result.stopLoss = currentPrice * (1 - stopLossPercent);
-                result.takeProfit1 = currentPrice * 1.02;  // 止盈1: 2%
-                result.takeProfit2 = currentPrice * 1.05;  // 止盈2: 5%
+                // 做多：止损在支撑位下方或1倍ATR，取更近的
+                double atrStopLoss = currentPrice - (atr * atrMultiplierSL);
+                double supportStopLoss = result.supportLevel * 0.998; // 支撑位下方0.2%
+                result.stopLoss = Math.max(atrStopLoss, supportStopLoss); // 取更高的（更接近入场价）
+                // 限制最大止损距离
+                double maxStopLoss = currentPrice * (1 - maxStopLossPercent);
+                result.stopLoss = Math.max(result.stopLoss, maxStopLoss);
+                
+                result.takeProfit1 = currentPrice + (atr * atrMultiplierTP1);
+                result.takeProfit2 = currentPrice + (atr * atrMultiplierTP2);
             } else if (result.direction.equals("做空")) {
-                result.stopLoss = currentPrice * (1 + stopLossPercent);
-                result.takeProfit1 = currentPrice * 0.98;  // 止盈1: 2%
-                result.takeProfit2 = currentPrice * 0.95;  // 止盈2: 5%
+                // 做空：止损在压力位上方或1倍ATR，取更近的
+                double atrStopLoss = currentPrice + (atr * atrMultiplierSL);
+                double resistanceStopLoss = result.resistanceLevel * 1.002; // 压力位上方0.2%
+                result.stopLoss = Math.min(atrStopLoss, resistanceStopLoss); // 取更低的（更接近入场价）
+                // 限制最大止损距离
+                double maxStopLoss = currentPrice * (1 + maxStopLossPercent);
+                result.stopLoss = Math.min(result.stopLoss, maxStopLoss);
+                
+                result.takeProfit1 = currentPrice - (atr * atrMultiplierTP1);
+                result.takeProfit2 = currentPrice - (atr * atrMultiplierTP2);
             }
             
             // 计算建议杠杆倍数（基于信号强度和波动率）
@@ -468,6 +545,73 @@ public class SignalMonitorService extends Service {
         return sumTR / period;
     }
 
+    // 计算支撑阻力位（基于局部极值）
+    private double[] calculateSupportResistance(List<Double> highs, List<Double> lows, List<Double> closes) {
+        int len = closes.size();
+        if (len < 10) return new double[]{closes.get(len-1) * 0.98, closes.get(len-1) * 1.02};
+        
+        // 扫描最近30根K线找局部极值
+        int lookback = Math.min(30, len - 1);
+        List<Double> localHighs = new ArrayList<>();
+        List<Double> localLows = new ArrayList<>();
+        
+        for (int i = len - lookback; i < len - 1; i++) {
+            // 局部高点：比前后都高
+            if (highs.get(i) > highs.get(i-1) && highs.get(i) > highs.get(i+1)) {
+                localHighs.add(highs.get(i));
+            }
+            // 局部低点：比前后都低
+            if (lows.get(i) < lows.get(i-1) && lows.get(i) < lows.get(i+1)) {
+                localLows.add(lows.get(i));
+            }
+        }
+        
+        double currentPrice = closes.get(len - 1);
+        double support, resistance;
+        
+        // 计算支撑位（近期低点的加权平均）
+        if (localLows.size() >= 2) {
+            // 取最近3个低点的加权平均（越近权重越高）
+            double sum = 0, weightSum = 0;
+            int count = Math.min(3, localLows.size());
+            for (int i = 0; i < count; i++) {
+                int idx = localLows.size() - 1 - i;
+                double weight = (3 - i); // 权重 3, 2, 1
+                sum += localLows.get(idx) * weight;
+                weightSum += weight;
+            }
+            support = sum / weightSum;
+        } else {
+            //  fallback：用最近低点
+            double minLow = currentPrice;
+            for (int i = len - lookback; i < len; i++) {
+                minLow = Math.min(minLow, lows.get(i));
+            }
+            support = minLow;
+        }
+        
+        // 计算压力位（近期高点的加权平均）
+        if (localHighs.size() >= 2) {
+            double sum = 0, weightSum = 0;
+            int count = Math.min(3, localHighs.size());
+            for (int i = 0; i < count; i++) {
+                int idx = localHighs.size() - 1 - i;
+                double weight = (3 - i);
+                sum += localHighs.get(idx) * weight;
+                weightSum += weight;
+            }
+            resistance = sum / weightSum;
+        } else {
+            double maxHigh = currentPrice;
+            for (int i = len - lookback; i < len; i++) {
+                maxHigh = Math.max(maxHigh, highs.get(i));
+            }
+            resistance = maxHigh;
+        }
+        
+        return new double[]{support, resistance};
+    }
+
     private double[] calculateKDJ(List<Double> highs, List<Double> lows, List<Double> closes, int n, int m1, int m2) {
         int len = closes.size();
         if (len < n) return new double[]{50, 50, 50};
@@ -524,7 +668,9 @@ public class SignalMonitorService extends Service {
 
     private void showSignalNotification(String direction, int score, String reason, 
                                         double price, double stopLoss, double takeProfit1, 
-                                        double takeProfit2, int leverage) {
+                                        double takeProfit2, int leverage,
+                                        double supportLevel, double resistanceLevel,
+                                        String signalMode) {
         // 60分以下的信号不推送
         if (Math.abs(score) < 60) {
             Log.d(TAG, "信号分数低于60，不推送: " + direction + " " + score);
@@ -547,6 +693,26 @@ public class SignalMonitorService extends Service {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, (int) System.currentTimeMillis(), 
             detailIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
+        // 信号模式标签(与前端detector.js保持一致)
+        String modeIcon = "";
+        String modeLabel = "";
+        if (signalMode != null) {
+            switch (signalMode) {
+                case "pin":
+                    modeIcon = "🪡";
+                    modeLabel = "插针反转";
+                    break;
+                case "trend":
+                    modeIcon = "📈";
+                    modeLabel = "趋势追单";
+                    break;
+                case "momentum":
+                    modeIcon = "⚡";
+                    modeLabel = "动量突破";
+                    break;
+            }
+        }
+        
         // 根据分数确定信号级别 — 强信号突出，观察👁温和
         boolean isStrongSignal = Math.abs(score) >= 85;
         String signalLevelText;
@@ -568,10 +734,14 @@ public class SignalMonitorService extends Service {
         
         // 构建大文本通知内容
         StringBuilder bigText = new StringBuilder(content);
+        if (!modeLabel.isEmpty()) {
+            bigText.append("\n").append(modeIcon).append(" ").append(modeLabel);
+        }
         bigText.append("\n\n📊 交易计划:");
-        if (stopLoss > 0) bigText.append(String.format("\n止损: $%.2f", stopLoss));
-        if (takeProfit1 > 0) bigText.append(String.format("\n止盈1: $%.2f", takeProfit1));
-        if (takeProfit2 > 0) bigText.append(String.format("\n止盈2: $%.2f", takeProfit2));
+        bigText.append(String.format("\n入场: $%.2f", price));
+        if (stopLoss > 0) bigText.append(String.format("  止损: $%.2f", stopLoss));
+        if (takeProfit1 > 0) bigText.append(String.format("  TP1: $%.2f", takeProfit1));
+        bigText.append(String.format("\n支撑: $%.2f  |  压力: $%.2f", supportLevel, resistanceLevel));
         bigText.append("\n\n点击通知查看完整详情");
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)

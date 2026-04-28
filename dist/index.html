@@ -147,7 +147,7 @@
   <section class="integrated-chart-section">
     <div class="chart-legend">
       <span class="legend-title" style="display:flex;align-items:center;gap:6px;">
-        <button id="chartSymbolToggle" onclick="toggleChartSymbol()" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:bold;cursor:pointer;min-width:38px;text-align:center;transition:all 0.2s;" title="点击切换BTC/ETH">BTC</button>
+        <button id="chartSymbolToggle" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:6px;padding:2px 8px;font-size:13px;font-weight:bold;min-width:38px;text-align:center;" title="BTC雷达">BTC</button>
         <span>K线 · <span id="chartIntervalLabel">15M</span></span>
       </span>
       <div class="legend-items">
@@ -899,44 +899,20 @@ function updateScoreDial(score, hasSignal, trend, result) {
   const directionIcon = document.getElementById('directionIcon');
   const directionText = document.getElementById('directionText');
 
-  // ── 屏幕诊断：让用户直接看到分数计算过程 ──
-  const absScore = Math.abs(score);
+  // 从参数派生局部变量（修复ReferenceError）
+  const absScore = Math.abs(score || 0);
   const isLong = score > 0;
-  const signalType = result && result.type;
-  let decision = '无效';
-  let expectedText = '无信号';
-  if (hasSignal && signalType) {
-    if (absScore >= 85) {
-      expectedText = isLong ? '做多信号' : '做空信号';
-      decision = '>=85分 → ' + expectedText;
-    } else if (absScore >= 60) {
-      expectedText = isLong ? '偏多观察' : '偏空观察';
-      decision = '60-84分 → ' + expectedText;
-    } else {
-      decision = '<60分 → 无信号';
-    }
-  }
-  // 写入诊断条
-  let debugEl = document.getElementById('scoreDebugBar');
-  if (!debugEl) {
-    debugEl = document.createElement('div');
-    debugEl.id = 'scoreDebugBar';
-    debugEl.style.cssText = 'position:fixed;top:5px;left:5px;background:rgba(0,0,0,0.9);color:#0f0;font-size:10px;padding:4px 8px;z-index:9999;border-radius:4px;font-family:monospace;max-width:90vw;overflow:hidden;text-align:left;';
-    document.body.appendChild(debugEl);
-  }
-  debugEl.innerHTML = '<b>📊诊断:</b> 原始分=' + score + ' | |分|=' + absScore + ' | |signalType=' + signalType + '<br>判断: ' + decision;
+  const signalType = hasSignal ? (isLong ? 'long' : 'short') : null;
 
   if (hasSignal && signalType) {
     if (absScore >= 85) {
       // 85-100：强烈信号
       if (directionIcon) directionIcon.textContent = isLong ? '🟢' : '🔴';
       if (directionText) directionText.textContent = isLong ? '做多信号' : '做空信号';
-      console.log('[ScoreDial] 显示: 做多信号, score=' + absScore);
     } else if (absScore >= 60) {
       // 60-84：偏多观察
       if (directionIcon) directionIcon.textContent = isLong ? '🟢' : '🔴';
       if (directionText) directionText.textContent = isLong ? '偏多观察' : '偏空观察';
-      console.log('[ScoreDial] 显示: 偏多观察, score=' + absScore);
     } else {
       // 60以下：无信号
       if (directionIcon) directionIcon.textContent = '⚪';
@@ -948,43 +924,51 @@ function updateScoreDial(score, hasSignal, trend, result) {
   }
 
   // 计算进度圆环
-  const circumference = 2 * Math.PI * 90;
-  const offset = circumference - (absScore / 100) * circumference;
-  circle.style.strokeDashoffset = offset;
+  if (circle) {
+    const circumference = 2 * Math.PI * 90;
+    const offset = circumference - (absScore / 100) * circumference;
+    circle.style.strokeDashoffset = offset;
 
-  // 根据分数改变颜色
-  if (absScore >= 80) {
-    circle.style.stroke = '#4ade80';
-  } else if (absScore >= 60) {
-    circle.style.stroke = '#fbbf24';
-  } else if (absScore >= 40) {
-    circle.style.stroke = '#fb923c';
-  } else {
-    circle.style.stroke = '#f87171';
+    // 根据分数改变颜色
+    if (absScore >= 80) {
+      circle.style.stroke = '#4ade80';
+    } else if (absScore >= 60) {
+      circle.style.stroke = '#fbbf24';
+    } else if (absScore >= 40) {
+      circle.style.stroke = '#fb923c';
+    } else {
+      circle.style.stroke = '#f87171';
+    }
   }
 
   // 动画显示分数
-  let currentScore = 0;
-  const animate = () => {
-    if (currentScore < absScore) {
-      currentScore += 2;
-      if (currentScore > absScore) currentScore = absScore;
-      scoreText.textContent = currentScore;
-      requestAnimationFrame(animate);
-    }
-  };
-  animate();
+  if (scoreText) {
+    let currentScore = 0;
+    const animate = () => {
+      if (currentScore < absScore) {
+        currentScore += 2;
+        if (currentScore > absScore) currentScore = absScore;
+        scoreText.textContent = currentScore;
+        requestAnimationFrame(animate);
+      }
+    };
+    animate();
+  }
 
   // 星级显示
-  const stars = '⭐'.repeat(Math.floor(absScore / 20)) + '☆'.repeat(5 - Math.floor(absScore / 20));
-  starsText.textContent = stars;
+  if (starsText) {
+    const stars = '⭐'.repeat(Math.floor(absScore / 20)) + '☆'.repeat(5 - Math.floor(absScore / 20));
+    starsText.textContent = stars;
+  }
 
   // 更新青蛙表情和语音
-  if (typeof frog !== 'undefined' && frog.updateExpression) {
-    frog.updateExpression(absScore);
-    if (absScore >= 80) frog.speak('high');
-    else if (absScore >= 50) frog.speak('medium');
-    else frog.speak('low');
+  if (typeof frog !== 'undefined' && frog && frog.updateExpression) {
+    try {
+      frog.updateExpression(absScore);
+      if (absScore >= 80) frog.speak('high');
+      else if (absScore >= 50) frog.speak('medium');
+      else frog.speak('low');
+    } catch(e) { /* 青蛙元素不存在时忽略 */ }
   }
 
   // 存储更新函数供外部调用
@@ -1235,11 +1219,6 @@ function showSymbolPanel() {
           <span style="flex:1;text-align:left;">BTC/USDT</span>
           <span class="sym-check" style="${current==='BTCUSDT'?'opacity:1':'opacity:0'}">✓</span>
         </button>
-        <button class="sym-btn ${current==='ETHUSDT'?'active':''}" data-sym="ETHUSDT" onclick="_doSwitch('ETHUSDT')">
-          <span style="font-size:20px;">Ξ</span>
-          <span style="flex:1;text-align:left;">ETH/USDT</span>
-          <span class="sym-check" style="${current==='ETHUSDT'?'opacity:1':'opacity:0'}">✓</span>
-        </button>
       </div>
       <button onclick="this.closest('#symbolPanelOverlay').remove()" style="margin-top:16px;width:100%;padding:10px;background:rgba(255,255,255,0.08);border:none;border-radius:8px;color:#94a3b8;cursor:pointer;font-size:14px;">取消</button>
     </div>
@@ -1275,7 +1254,7 @@ function switchSymbol(symbol) {
   
   // 3. 更新标题
   const titleMain = document.getElementById('titleMain');
-  if (titleMain) titleMain.textContent = symbol === 'BTCUSDT' ? 'BTC雷达' : 'ETH雷达';
+  if (titleMain) titleMain.textContent = 'BTC雷达';
   
   // 4. 更新K线图上的切换按钮
   const chartToggle = document.getElementById('chartSymbolToggle');
@@ -1288,20 +1267,29 @@ function switchSymbol(symbol) {
   }
   
   // 5. 重连WebSocket（新symbol的实时流）
-  if (typeof startWebSocket === 'function') {
-    if (_ws && _ws.readyState === WebSocket.OPEN) _ws.close();
-    startWebSocket();
+  try {
+    if (typeof window.startWebSocket === 'function') {
+      var ws = window._ws;
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      window.startWebSocket();
+    }
+  } catch(e) {
+    console.warn('[切换] WebSocket重连跳过:', e.message);
   }
   
   // 6. 并行获取多周期K线 + 重新检测信号
-  if (window.fetchKlines) {
+  if (window.fetchKlines && window.CanvasChart) {
     // 先获取当前周期K线刷新图表
     const currentInterval = document.querySelector('.period-tab.active');
     const interval = currentInterval ? currentInterval.dataset.interval : '15m';
     
-    window.fetchKlines(interval, 200).then(() => {
+    window.fetchKlines(interval, 200).then(bars => {
+      if (bars && bars.length > 0) {
+        window.CanvasChart.setData(bars);
+        console.log('[切换] K线已刷新，', bars.length, '根');
+      }
       if (window.detectSignal) window.detectSignal();
-    });
+    }).catch(e => console.warn('[切换] K线获取失败:', e));
     
     // 并行预加载其他周期
     ['5m','1h','4h','1d'].forEach(iv => {
